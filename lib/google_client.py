@@ -61,7 +61,7 @@ class MockGoogleBusinessProfileClient(GoogleBusinessProfileClient):
         raw = json.loads(config.active().seed_reviews_path.read_text())
         return [RawReview(**item) for item in raw]
 
-    def post_reply(self, external_id: str, reply_text: str) -> None:
+    def post_reply(self, external_id: str, location_id: Optional[str], reply_text: str) -> None:
         get_logger("google_client").info(f"[mock] would post reply to review {external_id}")
         print(f"[mock-google] would post reply to review {external_id}:\n{reply_text}")
 
@@ -207,10 +207,9 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
                             location_id=location_id,
                         )
                     )
-                )
-            page_token = data.get("nextPageToken")
-            if not page_token:
-                break
+                page_token = data.get("nextPageToken")
+                if not page_token:
+                    break
         get_logger("google_client").info(f"fetched {len(reviews)} reviews from Google (account={self._account_id})")
         return reviews
 

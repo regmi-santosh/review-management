@@ -85,14 +85,18 @@ def notify_escalation(review: dict, reason: str) -> None:
     logger.info(f"escalation triggered: rating={review['rating']} author={review['author_name']!r} reason={reason!r}")
 
     sent = False
-    for notifier in get_configured_notifiers(business):
+    for channel in get_configured_notifiers(business):
+        channel_name = type(channel).__name__.replace("Notifier", "")
         try:
-            urllib.request.urlopen(req, timeout=10)
-            logger.info("escalation sent via Slack")
-            return
+            channel.send(message)
+            logger.info(f"escalation sent via {channel_name}")
+            sent = True
         except Exception as exc:
-            logger.warning(f"failed to post escalation to Slack: {exc}")
-            print(f"[notify] failed to post to Slack ({exc}); falling back to console:")
+            logger.warning(f"failed to post escalation to {channel_name}: {exc}")
+            print(f"[notify] failed to post to {channel_name} ({exc}); falling back to console:")
+
+    if sent:
+        return
 
     logger.warning("escalation NOT sent to any channel - printed to console only")
     print(f"[notify] {message}")

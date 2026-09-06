@@ -5,7 +5,7 @@ An agentic system that reads Google reviews for a business and handles them:
 1. **Classify** each review (category, sentiment, urgency, confidence).
 2. **Draft** a human-toned reply, in that business's voice.
 3. **Route** it:
-   - **Highly negative** (`sentiment=negative` and `urgency` is `high`/`critical`) → **escalate immediately** to a human (Slack webhook, or console log by default). Reply is held for approval — never auto-posted.
+   - **Highly negative** (`sentiment=negative` and `urgency` is `high`/`critical`) → **escalate immediately** to a human (Telegram and/or Slack, or console log by default). Reply is held for approval — never auto-posted.
    - **High confidence** (`confidence >= CONFIDENCE_THRESHOLD`, default `0.85`) and not highly negative → **auto-post** the reply.
    - **Otherwise** → queue the draft for **human approval**.
 
@@ -20,7 +20,7 @@ tools/
   fetch_reviews.py           pull new reviews from Google (mock or live) into the local DB
   save_review.py             persist the agent's classification + draft + routing decision
   post_reply.py              post a reply through the Google client, mark it posted
-  notify.py                  fire an escalation alert (console / Slack)
+  notify.py                  fire an escalation alert (Telegram / Slack / console)
   list_pending.py            human helper: show everything awaiting a decision
   approve.py                 human helper: post a queued/escalated draft (optionally edited)
   reject.py                  human helper: dismiss a queued review with no reply
@@ -40,7 +40,7 @@ lib/                  shared code the tools above import (no ORM, no web framewo
   store.py             plain sqlite3 (stdlib) persistence — no ORM
   google_client.py    GoogleBusinessProfileClient interface + Mock/Live implementations (stdlib
                        urllib for HTTP — no third-party HTTP client)
-  notifier.py          escalation notifications (console / Slack, via urllib)
+  notifier.py          escalation notifications (Telegram / Slack / console, via urllib)
   actions.py           shared post/reject logic used by the CLI tools
   logging_setup.py     persistent rotating log file per business (stdlib logging — see
                        docs/OPERATIONS.md "Structured logging")
