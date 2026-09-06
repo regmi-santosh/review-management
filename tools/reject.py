@@ -2,7 +2,7 @@
 """Human rejection: mark a pending/escalated review as rejected without
 posting any reply.
 
-Usage: python tools/reject.py --review-id 3
+Usage: python3 tools/reject.py --review-id 3
 """
 import argparse
 import sys
@@ -10,11 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlmodel import Session
-
-from app.db import engine, init_db
-from app.models import Review
-from app.services import reject_review
+from lib import store
+from lib.actions import reject_review
 
 
 def main() -> None:
@@ -22,13 +19,12 @@ def main() -> None:
     parser.add_argument("--review-id", type=int, required=True)
     args = parser.parse_args()
 
-    init_db()
-    with Session(engine) as session:
-        review = session.get(Review, args.review_id)
-        if not review:
-            print(f"error: no review with id {args.review_id}", file=sys.stderr)
-            sys.exit(1)
-        reject_review(session, review)
+    conn = store.connect()
+    try:
+        reject_review(conn, args.review_id)
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     print(f"rejected review {args.review_id}")
 
