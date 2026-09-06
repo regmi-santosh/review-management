@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Pull reviews from Google (mock or live, per GOOGLE_CLIENT_MODE in .env)
-and insert any not already in the local DB as status=new. Prints the newly
-inserted reviews as a JSON array so the review-handler agent can process
-them.
+and insert any not already in the local DB. Reviews that already had an
+owner reply on Google are recorded as already posted and excluded from the
+"new" list below. Prints the reviews that actually need the review-handler
+agent's attention as a JSON array.
 
 Usage: python3 tools/fetch_reviews.py
 """
@@ -21,15 +22,32 @@ def main() -> None:
     client = get_google_client()
     fetched = client.fetch_reviews()
 
-    inserted = []
+    actionable = []
+    already_replied = 0
     for raw in fetched:
         new_id = store.insert_review(
-            conn, raw.external_id, raw.author_name, raw.rating, raw.text, raw.create_time
+            conn,
+            raw.external_id,
+            raw.author_name,
+            raw.rating,
+            raw.text,
+            raw.create_time,
+            existing_reply=raw.existing_reply,
         )
-        if new_id is not None:
-            inserted.append(store.get_review(conn, new_id))
+        if new_id is None:
+            continue
+        row = store.get_review(conn, new_id)
+        if row["status"] == "new":
+            actionable.append(row)
+        else:
+            already_replied += 1
 
-    print(json.dumps({"fetched": len(fetched), "new": inserted}, indent=2))
+    print(
+        json.dumps(
+            {"fetched": len(fetched), "already_replied": already_replied, "new": actionable},
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

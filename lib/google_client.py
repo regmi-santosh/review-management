@@ -20,6 +20,7 @@ class RawReview:
     rating: int
     text: str
     create_time: str
+    existing_reply: Optional[str] = None  # set if Google already has an owner reply on this review
 
 
 class GoogleBusinessProfileClient(ABC):
@@ -134,19 +135,27 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
         return {"Authorization": f"Bearer {self._access_token()}"}
 
     def fetch_reviews(self) -> List[RawReview]:
-        url = f"{self.BASE_URL}/accounts/{self._account_id}/locations/{self._location_id}/reviews"
-        data = _request("GET", url, headers=self._headers())
+        base_url = f"{self.BASE_URL}/accounts/{self._account_id}/locations/{self._location_id}/reviews"
+        headers = self._headers()
         reviews = []
-        for item in data.get("reviews", []):
-            reviews.append(
-                RawReview(
-                    external_id=item["reviewId"],
-                    author_name=item.get("reviewer", {}).get("displayName", "Anonymous"),
-                    rating=self.RATING_MAP.get(item.get("starRating", "FIVE"), 5),
-                    text=item.get("comment", ""),
-                    create_time=item["createTime"],
+        page_token = None
+        while True:
+            url = f"{base_url}?pageToken={page_token}" if page_token else base_url
+            data = _request("GET", url, headers=headers)
+            for item in data.get("reviews", []):
+                reviews.append(
+                    RawReview(
+                        external_id=item["reviewId"],
+                        author_name=item.get("reviewer", {}).get("displayName", "Anonymous"),
+                        rating=self.RATING_MAP.get(item.get("starRating", "FIVE"), 5),
+                        text=item.get("comment", ""),
+                        create_time=item["createTime"],
+                        existing_reply=item.get("reviewReply", {}).get("comment") or None,
+                    )
                 )
-            )
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
         return reviews
 
     def post_reply(self, external_id: str, reply_text: str) -> None:

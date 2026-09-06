@@ -54,8 +54,14 @@ def insert_review(
     rating: int,
     text: str,
     create_time: str,
+    existing_reply: Optional[str] = None,
 ) -> Optional[int]:
     """Insert a new review if external_id isn't already known.
+
+    If `existing_reply` is set (Google already has an owner reply on this
+    review — e.g. posted manually, before this system existed), it's
+    recorded as already `posted` so the agent never processes it and never
+    overwrites that existing reply via the API.
 
     Returns the new row id, or None if it already existed.
     """
@@ -66,11 +72,12 @@ def insert_review(
         return None
 
     ts = _now()
+    status = "posted" if existing_reply else "new"
     cur = conn.execute(
         "INSERT INTO reviews "
-        "(external_id, author_name, rating, text, create_time, status, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, 'new', ?, ?)",
-        (external_id, author_name, rating, text, create_time, ts, ts),
+        "(external_id, author_name, rating, text, create_time, status, posted_reply, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (external_id, author_name, rating, text, create_time, status, existing_reply, ts, ts),
     )
     conn.commit()
     return cur.lastrowid

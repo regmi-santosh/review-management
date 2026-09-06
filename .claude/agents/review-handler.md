@@ -21,7 +21,7 @@ Run:
 python3 tools/fetch_reviews.py
 ```
 
-This pulls from Google (mock data for now unless `GOOGLE_CLIENT_MODE=live` — see `docs/API_SETUP.md`) and returns JSON: `{"fetched": N, "new": [...]}`. `new` is the list of reviews you need to process this run (each has `id`, `external_id`, `author_name`, `rating`, `text`, `create_time`). If `new` is empty, report that nothing needs handling and stop.
+This pulls from Google (mock data for now unless `GOOGLE_CLIENT_MODE=live` — see `docs/API_SETUP.md`) and returns JSON: `{"fetched": N, "already_replied": M, "new": [...]}`. `new` is the list of reviews you actually need to process this run (each has `id`, `external_id`, `author_name`, `rating`, `text`, `create_time`) — reviews that already had an owner reply on Google before this system ever saw them are counted in `already_replied` and excluded from `new` automatically; you'll never see or touch those. If `new` is empty, report that nothing needs handling and stop.
 
 ## Step 2 — For each new review, classify it
 
@@ -40,8 +40,8 @@ Read the review text carefully and determine:
 Write a short (2–4 sentence) reply as the business, in the voice described in its `profile.md`:
 - Thank the reviewer by first name when positive; acknowledge specifics they mentioned (don't write a generic template).
 - For complaints: apologize genuinely, acknowledge the specific issue, and invite them to reach out directly (e.g. "please call/message us so we can make this right") rather than promising specific remedies (refunds, discounts) you're not authorized to offer.
-- Never invent facts not in the review or given to you in the business profile (no specific employee names, no policy claims, no promises of compensation).
-- Sign off using the signature given in the business profile.
+- Never invent facts not in the review or given to you in the business profile (no employee names/details beyond what the profile gives you, no policy claims, no promises of compensation).
+- Match whatever sign-off convention the business profile describes — a fixed signature, or no sign-off at all if that's the business's established pattern.
 
 ## Step 4 — Route the review (apply this exactly, don't use judgment to override it)
 
