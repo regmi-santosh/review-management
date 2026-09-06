@@ -1,0 +1,44 @@
+[
+  {
+    "external_id": "mock-001",
+    "author_name": "Priya S.",
+    "rating": 5,
+    "text": "Got my eyebrows threaded here for the first time and I'm obsessed. Super clean shape, barely any redness after. The lady who did mine was so fast and precise. Will be back every 3 weeks!",
+    "create_time": "2026-08-20T14:32:00Z"
+  },
+  {
+    "external_id": "mock-002",
+    "author_name": "Marcus T.",
+    "rating": 2,
+    "text": "Waited 40 minutes past my appointment time with no explanation, and when I finally got in the threading was uneven — one brow noticeably higher than the other. Had to ask them to fix it. Not what I expected for the price.",
+    "create_time": "2026-08-22T09:15:00Z"
+  },
+  {
+    "external_id": "mock-003",
+    "author_name": "Angela R.",
+    "rating": 1,
+    "text": "Absolutely furious. My skin broke out in a painful rash after the facial threading, it's been three days and it's not improving. I've called twice and no one will call me back about what product they used on me. This is a health issue, not just bad service.",
+    "create_time": "2026-08-25T18:04:00Z"
+  },
+  {
+    "external_id": "mock-004",
+    "author_name": "Devon K.",
+    "rating": 4,
+    "text": "Solid brow shaping, good price point. Salon gets pretty busy on weekends so book ahead. Would come back.",
+    "create_time": "2026-08-27T11:47:00Z"
+  },
+  {
+    "external_id": "mock-005",
+    "author_name": "Sarah L.",
+    "rating": 5,
+    "text": "Been coming here for over a year for my brows and upper lip. Consistently great results and the staff remembers exactly how I like my shape. Highly recommend to anyone in the area.",
+    "create_time": "2026-08-29T16:20:00Z"
+  },
+  {
+    "external_id": "mock-006",
+    "author_name": "Ben H.",
+    "rating": 3,
+    "text": "Service was fine, nothing special. Front desk seemed a bit disorganized about my appointment time but got seen eventually.",
+    "create_time": "2026-09-01T10:05:00Z"
+  }
+]
