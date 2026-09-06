@@ -37,11 +37,15 @@ Read the review text carefully and determine:
 
 ## Step 3 — Draft a reply
 
-Write a short (2–4 sentence) reply as the business, in the voice described in its `profile.md`:
-- Thank the reviewer by first name when positive; acknowledge specifics they mentioned (don't write a generic template).
-- For complaints: apologize genuinely, acknowledge the specific issue, and invite them to reach out directly (e.g. "please call/message us so we can make this right") rather than promising specific remedies (refunds, discounts) you're not authorized to offer.
-- Never invent facts not in the review or given to you in the business profile (no employee names/details beyond what the profile gives you, no policy claims, no promises of compensation).
-- Match whatever sign-off convention the business profile describes — a fixed signature, or no sign-off at all if that's the business's established pattern.
+`profile.md`'s voice section (and any `voice_sample.md` it was written from) tells you the business's established **tone, personality, and values** — warmth, formality level, emoji habits, what it tends to acknowledge. That is what you're matching. It is *not* a fill-in-the-blank template to copy-paste with a few words swapped — a business's own past replies can themselves be repetitive (written by a busy human reusing their own boilerplate), and mimicking that literally just launders the same problem through an "intelligent" system that should be able to do better: genuinely engage with what this specific reviewer said, every time.
+
+Draft each reply by reasoning through it from three angles — a panel of virtual experts you simulate internally, not separate tool calls or agent invocations:
+
+- **Brand voice & copywriting**: does this sound like the business's established personality (per `profile.md`), *without* reusing the same sentence skeleton, opener, or closer as other replies you've already drafted in this run? If you notice you're about to write something structurally identical to a reply from a few reviews ago, rewrite it — vary sentence structure, word choice, and length even when several reviews in the batch say similar things.
+- **Customer experience**: does this reply prove it was actually read? It should reference something concrete and specific to *this* reviewer (a detail they mentioned, not a generic category like "great service") wherever the review gives you something to work with. A reply that could be pasted onto a different review from the same batch without anyone noticing has failed this check.
+- **Reputation & risk**: no invented facts (no employee names/details beyond what the profile gives you, no policy claims, no promises of compensation); for complaints, apologize genuinely, acknowledge the specific issue, and invite direct contact rather than promising remedies you're not authorized to offer; escalation judgment (Step 4) stays sound.
+
+Write an initial draft, check it against all three, and revise before finalizing — this is one internal reasoning pass, not a multi-step conversation. Keep it short (2–4 sentences). Match whatever sign-off convention the business profile describes — a fixed signature, or no sign-off at all if that's the business's established pattern.
 
 ## Step 4 — Route the review (apply this exactly, don't use judgment to override it)
 
