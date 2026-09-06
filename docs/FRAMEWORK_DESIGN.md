@@ -12,14 +12,10 @@ This system already runs against real data for one business (Brows & Threading C
   - `profile.md`, `seed_reviews.json` — voice/context and mock data, as before.
   - `lib/config.py`'s `Business` class resolves all of this into one object (`config.active()`); `use_business(slug)` switches it. Every module that used to read frozen top-level constants (`lib/store.py`, `lib/google_client.py`, `lib/notifier.py`) now calls `config.active()` at the point of use, so switching business mid-process works correctly.
 - **Every `tools/*.py` script accepts `--business <slug>`** (`lib/cli.py`'s `add_business_arg`/`apply_business_arg`), defaulting to `BUSINESS_SLUG`/the sole business directory when omitted. Verified with a throwaway second business: isolated DB file, isolated mock data, a `google_client_mode` override working independently of the global (`live`) default — and the first business's 362-review DB was untouched throughout.
+- **Voice-learning is now a repeatable tool, not a one-off manual analysis.** `tools/learn_voice.py` samples a business's own pre-existing owner replies (tagged `reply_source='owner'` at fetch time — see below) and writes them, paired with their review, to `businesses/<slug>/voice_sample.md` (gitignored: it contains real customer review text). Verified against Brows & Threading City's real data: reproduces the same voice pattern (thank-you opener, 🌸/💖, no formal sign-off) that was originally identified by hand. The judgment of turning that sample into `profile.md`'s prose voice section is still a separate, human-or-agent-assisted step — this tool only automates the mechanical sampling.
+  - This required distinguishing genuine historic owner replies from ones this system posts itself, so the sampler never learns from — and reinforces — its own drafts. `reviews.reply_source` is `'owner'` (set on fetch, from Google's `reviewReply` field, before this system existed) or `'agent'` (set by `lib/actions.py::post_review_reply`, whenever this system posts — auto or human-approved). Existing DBs migrate automatically on connect (`lib/store.py::_migrate`), backfilled from the fact that the agent always sets `reasoning` before posting.
 
 ## Remaining gaps
-
-### Voice-learning is still a manual, one-off analysis
-
-Onboarding Brows & Threading City's `profile.md` voice section involved a human (this session) reading a sample of ~330 past replies and hand-summarizing the pattern into prose. That doesn't scale to "onboard client #5 in ten minutes."
-
-**Fix**: a `tools/learn_voice.py` script that, given a business already fetched at least once in live mode, pulls a random sample of `posted` reviews where `posted_reply` came from `existing_reply` (i.e., genuinely pre-existing owner replies, not ones this system posted), and dumps them in a structured format (review text + reply, paired) to a file. The *judgment* of turning that into prose guidance still belongs in an agent-assisted step (read the sample, write `profile.md`'s voice section) — but the mechanical part (find, sample, format) shouldn't be a bespoke one-off each time.
 
 ### Multi-location clients aren't modeled
 
@@ -37,7 +33,7 @@ For a new client `<slug>`:
 4. `python3 tools/google_oauth_setup.py --business <slug> --client-id ... --client-secret ...` → writes that client's OAuth secrets into `businesses/<slug>/.env`, isolated from every other business.
 5. `python3 tools/google_list_locations.py --business <slug>` → fill in `business.json`.
 6. Set `"google_client_mode": "live"` in that business's `business.json`, then `python3 tools/fetch_reviews.py --business <slug>` → pulls their real review history into `businesses/<slug>/reviews.db`, including past replies (auto-protected from being overwritten).
-7. `python3 tools/learn_voice.py --business <slug>` (once built) → produces a sample of past-reply pairs; a human (or an agent-assisted pass) turns that into `businesses/<slug>/profile.md`'s voice section.
+7. `python3 tools/learn_voice.py --business <slug>` → writes `businesses/<slug>/voice_sample.md`; a human (or an agent-assisted pass) reads it and writes `businesses/<slug>/profile.md`'s voice section. Skip this if the listing has no pre-existing owner replies yet (nothing to learn from) — write voice guidance from scratch instead.
 8. Run the review-handler agent against `<slug>` and review the first batch's output before trusting it unattended.
 
 No step here touches `.claude/agents/review-handler.md`, `lib/`, or any other client's directory — that's the actual definition of "framework," and this round of work is what made that true rather than aspirational.

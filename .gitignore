@@ -5,6 +5,7 @@ venv/
 .env
 *.db
 *.db-journal
+businesses/*/voice_sample*.md
 .pytest_cache/
 .DS_Store
 *.egg-info/

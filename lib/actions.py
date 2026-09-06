@@ -21,7 +21,7 @@ def post_review_reply(conn: sqlite3.Connection, review_id: int, text: Optional[s
     client = get_google_client()
     client.post_reply(review["external_id"], reply_text)
 
-    store.update_review(conn, review_id, posted_reply=reply_text, status="posted")
+    store.update_review(conn, review_id, posted_reply=reply_text, status="posted", reply_source="agent")
     return store.get_review(conn, review_id)
 
 
