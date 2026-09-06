@@ -3,18 +3,20 @@
 Profile API, once Google has approved API access for your Cloud project
 (see docs/API_SETUP.md). Stdlib only — opens a browser for you to sign in
 as the Google account that manages the business listing, then writes the
-refresh token straight into .env.
+refresh token straight into that business's own businesses/<slug>/.env
+(each business's listing is normally owned by a different Google account,
+so credentials are never shared across businesses).
 
 Usage:
-  python3 tools/google_oauth_setup.py
-    (reads GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET from .env)
+  python3 tools/google_oauth_setup.py [--business <slug>]
+    (reads GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET from that
+    business's .env, or the top-level .env as a fallback)
 
   python3 tools/google_oauth_setup.py --client-id XXX --client-secret YYY
-    (overrides/provides them directly; also saved into .env)
+    (overrides/provides them directly; still saved into the business's .env)
 """
 import argparse
 import json
-import re
 import sys
 import urllib.parse
 import urllib.request
@@ -25,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib import config
+from lib.cli import add_business_arg, apply_business_arg
 
 SCOPE = "https://www.googleapis.com/auth/business.manage"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -53,37 +56,30 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
-def _save_to_env(values: dict) -> None:
-    """Set or replace KEY=value lines in .env, preserving everything else."""
-    lines = config.ENV_PATH.read_text().splitlines() if config.ENV_PATH.exists() else []
-    remaining = dict(values)
-    for i, line in enumerate(lines):
-        match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=", line)
-        if match and match.group(1) in remaining:
-            key = match.group(1)
-            lines[i] = f"{key}={remaining.pop(key)}"
-    for key, value in remaining.items():
-        lines.append(f"{key}={value}")
-    config.ENV_PATH.write_text("\n".join(lines) + "\n")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--client-id", default=config.GOOGLE_OAUTH_CLIENT_ID)
-    parser.add_argument("--client-secret", default=config.GOOGLE_OAUTH_CLIENT_SECRET)
+    add_business_arg(parser)
+    parser.add_argument("--client-id", default=None)
+    parser.add_argument("--client-secret", default=None)
     args = parser.parse_args()
+    apply_business_arg(args)
 
-    if not args.client_id or not args.client_secret:
+    business = config.active()
+    client_id = args.client_id or business.google_oauth_client_id
+    client_secret = args.client_secret or business.google_oauth_client_secret
+
+    if not client_id or not client_secret:
         print(
-            "error: no client id/secret given and none found in .env "
-            "(GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET). "
-            "Pass --client-id/--client-secret or set them in .env first.",
+            f"error: no client id/secret given and none found for business "
+            f"'{business.slug}' (businesses/{business.slug}/.env or top-level .env: "
+            "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET). "
+            "Pass --client-id/--client-secret or set them first.",
             file=sys.stderr,
         )
         sys.exit(1)
 
     auth_params = {
-        "client_id": args.client_id,
+        "client_id": client_id,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
         "scope": SCOPE,
@@ -91,6 +87,7 @@ def main() -> None:
         "prompt": "consent",
     }
     auth_url = f"{AUTH_URL}?{urllib.parse.urlencode(auth_params)}"
+    print(f"Authorizing for business '{business.slug}'.")
     print(f"Opening your browser to authorize. If it doesn't open, visit:\n{auth_url}\n")
     webbrowser.open(auth_url)
 
@@ -106,8 +103,8 @@ def main() -> None:
     data = urllib.parse.urlencode(
         {
             "code": _received["code"],
-            "client_id": args.client_id,
-            "client_secret": args.client_secret,
+            "client_id": client_id,
+            "client_secret": client_secret,
             "redirect_uri": REDIRECT_URI,
             "grant_type": "authorization_code",
         }
@@ -125,15 +122,11 @@ def main() -> None:
         )
         sys.exit(1)
 
-    _save_to_env(
-        {
-            "GOOGLE_OAUTH_CLIENT_ID": args.client_id,
-            "GOOGLE_OAUTH_CLIENT_SECRET": args.client_secret,
-            "GOOGLE_OAUTH_REFRESH_TOKEN": tokens["refresh_token"],
-        }
-    )
-    print("\nSuccess. Saved GOOGLE_OAUTH_REFRESH_TOKEN (and client id/secret) to .env.")
-    print("Next: python3 tools/google_list_locations.py")
+    business.save_secret("GOOGLE_OAUTH_CLIENT_ID", client_id)
+    business.save_secret("GOOGLE_OAUTH_CLIENT_SECRET", client_secret)
+    business.save_secret("GOOGLE_OAUTH_REFRESH_TOKEN", tokens["refresh_token"])
+    print(f"\nSuccess. Saved OAuth credentials to businesses/{business.slug}/.env.")
+    print(f"Next: python3 tools/google_list_locations.py --business {business.slug}")
 
 
 if __name__ == "__main__":

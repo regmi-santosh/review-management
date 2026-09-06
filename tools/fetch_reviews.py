@@ -5,8 +5,9 @@ owner reply on Google are recorded as already posted and excluded from the
 "new" list below. Prints the reviews that actually need the review-handler
 agent's attention as a JSON array.
 
-Usage: python3 tools/fetch_reviews.py
+Usage: python3 tools/fetch_reviews.py [--business <slug>]
 """
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -14,10 +15,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib import store
+from lib.cli import add_business_arg, apply_business_arg
 from lib.google_client import get_google_client
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    add_business_arg(parser)
+    args = parser.parse_args()
+    apply_business_arg(args)
+
     conn = store.connect()
     client = get_google_client()
     fetched = client.fetch_reviews()

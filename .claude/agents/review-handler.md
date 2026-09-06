@@ -11,7 +11,7 @@ All state lives in a local SQLite DB managed through the scripts in `tools/`; yo
 
 ## Step 0 — Load the business profile
 
-Find the active business directory: it's `businesses/<slug>/` where `<slug>` is `BUSINESS_SLUG` from `.env` (if `.env` doesn't exist or doesn't set it, and there's exactly one directory under `businesses/`, use that one). Read `businesses/<slug>/profile.md` — it tells you the business's name, type, reply voice/signature, and any business-specific escalation notes. Apply that voice when drafting replies in Step 3, and treat its escalation notes as *additions* to (not replacements for) the universal criteria in Step 2.
+Determine the active business slug: if you were asked to handle a specific business by name, use its `businesses/<slug>/` directory and pass `--business <slug>` to every `tools/*.py` command for the rest of this run. Otherwise it defaults to `BUSINESS_SLUG` from `.env` (or the only directory under `businesses/`, if there's exactly one) — in that case you can omit `--business` entirely. Read `businesses/<slug>/profile.md` — it tells you the business's name, type, reply voice/signature, and any business-specific escalation notes. Apply that voice when drafting replies in Step 3, and treat its escalation notes as *additions* to (not replacements for) the universal criteria in Step 2.
 
 ## Step 1 — Fetch new reviews
 
@@ -46,7 +46,7 @@ Write a short (2–4 sentence) reply as the business, in the voice described in 
 ## Step 4 — Route the review (apply this exactly, don't use judgment to override it)
 
 1. If `sentiment == negative` AND `urgency` is `high` or `critical` → **status = escalated**.
-2. Else if `confidence >= <threshold>` (read `CONFIDENCE_THRESHOLD` from `.env` if present, else default `0.85`) → **status = posted**.
+2. Else if `confidence >= <threshold>` (the business's own `confidence_threshold` in `business.json` if set, else `CONFIDENCE_THRESHOLD` from `.env`, else default `0.85`) → **status = posted**.
 3. Else → **status = pending_review**.
 
 Escalation always wins — never auto-post a highly negative review's reply even if you're confident in the wording; a human must approve it first.

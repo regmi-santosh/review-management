@@ -1,6 +1,7 @@
-"""Google Business Profile client — mock (seeded from data/seed_reviews.json)
-and live (real API, stdlib urllib only). See README for how to get from mock
-to live once Google grants Business Profile API access for this listing.
+"""Google Business Profile client — mock (seeded from each business's own
+seed_reviews.json) and live (real API, stdlib urllib only). See
+docs/API_SETUP.md for how to get from mock to live once Google grants
+Business Profile API access for a given business's listing.
 """
 import json
 import urllib.error
@@ -38,10 +39,10 @@ class GoogleBusinessProfileClient(ABC):
 
 class MockGoogleBusinessProfileClient(GoogleBusinessProfileClient):
     """Stands in until Google Business Profile API access is granted for the
-    active business (config.BUSINESS_SLUG) — see README."""
+    active business — see README."""
 
     def fetch_reviews(self) -> List[RawReview]:
-        raw = json.loads(config.SEED_REVIEWS_PATH.read_text())
+        raw = json.loads(config.active().seed_reviews_path.read_text())
         return [RawReview(**item) for item in raw]
 
     def post_reply(self, external_id: str, reply_text: str) -> None:
@@ -68,11 +69,11 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
     """Real Google Business Profile API client.
 
     Not usable until:
-      1. The "Brows & Threading City" listing is verified in Business Profile
-         Manager, and
+      1. The business's listing is verified in Business Profile Manager, and
       2. Google approves API access for a Cloud project against that
-         verified listing (manual review — see README), and
-      3. GOOGLE_OAUTH_* and GOOGLE_BUSINESS_* are filled in .env.
+         verified listing (manual review — see docs/API_SETUP.md), and
+      3. The business has its own OAuth credentials and location IDs set —
+         see businesses/<slug>/.env and business.json.
 
     Uses the My Business reviews sub-resource:
       GET https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews
@@ -85,45 +86,47 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
     RATING_MAP = {"ONE": 1, "TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5}
 
     def __init__(self) -> None:
-        missing_env = [
+        business = config.active()
+        missing_secrets = [
             name
             for name, value in [
-                ("GOOGLE_OAUTH_CLIENT_ID", config.GOOGLE_OAUTH_CLIENT_ID),
-                ("GOOGLE_OAUTH_CLIENT_SECRET", config.GOOGLE_OAUTH_CLIENT_SECRET),
-                ("GOOGLE_OAUTH_REFRESH_TOKEN", config.GOOGLE_OAUTH_REFRESH_TOKEN),
+                ("GOOGLE_OAUTH_CLIENT_ID", business.google_oauth_client_id),
+                ("GOOGLE_OAUTH_CLIENT_SECRET", business.google_oauth_client_secret),
+                ("GOOGLE_OAUTH_REFRESH_TOKEN", business.google_oauth_refresh_token),
             ]
             if not value
         ]
-        missing_business = [
+        missing_facts = [
             name
             for name, value in [
-                ("google_account_id", config.GOOGLE_BUSINESS_ACCOUNT_ID),
-                ("google_location_id", config.GOOGLE_BUSINESS_LOCATION_ID),
+                ("google_account_id", business.google_account_id),
+                ("google_location_id", business.google_location_id),
             ]
             if not value
         ]
-        if missing_env or missing_business:
+        if missing_secrets or missing_facts:
             parts = []
-            if missing_env:
-                parts.append(".env: " + ", ".join(missing_env))
-            if missing_business:
-                parts.append(
-                    f"businesses/{config.BUSINESS_SLUG}/business.json: " + ", ".join(missing_business)
-                )
+            if missing_secrets:
+                parts.append(f"businesses/{business.slug}/.env (or top-level .env): " + ", ".join(missing_secrets))
+            if missing_facts:
+                parts.append(f"businesses/{business.slug}/business.json: " + ", ".join(missing_facts))
             raise RuntimeError(
                 "GOOGLE_CLIENT_MODE=live but missing required settings — "
                 + "; ".join(parts)
                 + ". See docs/API_SETUP.md."
             )
-        self._account_id = config.GOOGLE_BUSINESS_ACCOUNT_ID
-        self._location_id = config.GOOGLE_BUSINESS_LOCATION_ID
+        self._account_id = business.google_account_id
+        self._location_id = business.google_location_id
+        self._client_id = business.google_oauth_client_id
+        self._client_secret = business.google_oauth_client_secret
+        self._refresh_token = business.google_oauth_refresh_token
 
     def _access_token(self) -> str:
         data = urllib.parse.urlencode(
             {
-                "client_id": config.GOOGLE_OAUTH_CLIENT_ID,
-                "client_secret": config.GOOGLE_OAUTH_CLIENT_SECRET,
-                "refresh_token": config.GOOGLE_OAUTH_REFRESH_TOKEN,
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
+                "refresh_token": self._refresh_token,
                 "grant_type": "refresh_token",
             }
         ).encode()
@@ -167,6 +170,6 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
 
 
 def get_google_client() -> GoogleBusinessProfileClient:
-    if config.GOOGLE_CLIENT_MODE == "live":
+    if config.active().google_client_mode == "live":
         return LiveGoogleBusinessProfileClient()
     return MockGoogleBusinessProfileClient()
