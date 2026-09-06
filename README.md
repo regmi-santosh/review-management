@@ -41,6 +41,8 @@ lib/                  shared code the tools above import (no ORM, no web framewo
                        urllib for HTTP — no third-party HTTP client)
   notifier.py          escalation notifications (console / Slack, via urllib)
   actions.py           shared post/reject logic used by the CLI tools
+  logging_setup.py     persistent rotating log file per business (stdlib logging — see
+                       docs/OPERATIONS.md "Structured logging")
 
 businesses/<slug>/     one directory per business — fully isolated data (see "Adding another business")
   business.json        structured facts: name, Maps URL, Google account/location IDs, and
@@ -53,6 +55,11 @@ businesses/<slug>/     one directory per business — fully isolated data (see "
   seed_reviews.json    mock review data used while in mock mode
   reviews.db           (gitignored) this business's own SQLite DB — created automatically,
                        includes a `runs` table logging every review-handler run
+  logs/                (gitignored) this business's own rotating log files — see
+                       docs/OPERATIONS.md "Structured logging" and "Scheduling"
+
+scripts/                launchd unattended-scheduling wrapper + job definition — see
+                       docs/OPERATIONS.md "Scheduling"
 
 tests/                 stdlib unittest suite, fully isolated from real businesses/ data
 ```
@@ -101,9 +108,9 @@ Nothing else changes: the same agent definition, tools, and DB schema work for a
 
 ## Status: Google Business Profile API access
 
-Reading/replying to reviews on Google Maps is only officially possible through the **Google Business Profile API**, which requires Google to manually approve API access for your Cloud project against a verified, owned listing. That access has **not been requested/granted yet**.
+Reading/replying to reviews on Google Maps is only officially possible through the **Google Business Profile API**, which requires Google to manually approve API access for your Cloud project against a verified, owned listing.
 
-**Until it is**, everything runs against `lib/google_client.py::MockGoogleBusinessProfileClient`, seeded from each business's `seed_reviews.json`, so the full classify → draft → route pipeline can be exercised end-to-end today.
+**Brows & Threading City is live**: access was granted, and the system runs against the real API for it (`google_client_mode: "live"`) — first full run fetched 362 real reviews, learned the business's established voice from ~330 of its own past replies, and processed the 31 genuinely unanswered ones. A new business you add still defaults to `lib/google_client.py::MockGoogleBusinessProfileClient` (seeded from its own `seed_reviews.json`) until its own API access is requested and granted, so the classify → draft → route pipeline can be exercised end-to-end before going live.
 
 **For the full walkthrough of getting live API access and generating the OAuth keys, see [docs/API_SETUP.md](docs/API_SETUP.md)** (also covers the optional Slack webhook for escalation alerts). Short version: verify the listing → create a Google Cloud OAuth client → request Business Profile API access (manual review, days-to-weeks) → run `tools/google_oauth_setup.py` for a refresh token → run `tools/google_list_locations.py` to find your IDs → set `GOOGLE_CLIENT_MODE=live`.
 
