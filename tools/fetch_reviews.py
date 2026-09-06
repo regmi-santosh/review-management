@@ -59,6 +59,7 @@ def main() -> None:
             raw.text,
             raw.create_time,
             existing_reply=raw.existing_reply,
+            location_id=raw.location_id,
         )
         if new_id is None:
             continue

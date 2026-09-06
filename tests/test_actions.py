@@ -9,8 +9,8 @@ class FakeGoogleClient:
     def __init__(self):
         self.posted = []
 
-    def post_reply(self, external_id, text):
-        self.posted.append((external_id, text))
+    def post_reply(self, external_id, location_id, text):
+        self.posted.append((external_id, location_id, text))
 
     def fetch_reviews(self):
         return []
@@ -20,7 +20,9 @@ class PostReviewReplyTests(unittest.TestCase):
     def test_posts_and_marks_agent_source(self):
         with temp_business():
             conn = store.connect()
-            rid = store.insert_review(conn, "e1", "A", 5, "x", "2026-01-01T00:00:00Z")
+            rid = store.insert_review(
+                conn, "e1", "A", 5, "x", "2026-01-01T00:00:00Z", location_id="loc-1"
+            )
             store.update_review(conn, rid, draft_reply="Thanks so much!")
 
             fake = FakeGoogleClient()
@@ -30,7 +32,7 @@ class PostReviewReplyTests(unittest.TestCase):
             self.assertEqual(result["status"], "posted")
             self.assertEqual(result["reply_source"], "agent")
             self.assertEqual(result["posted_reply"], "Thanks so much!")
-            self.assertEqual(fake.posted, [("e1", "Thanks so much!")])
+            self.assertEqual(fake.posted, [("e1", "loc-1", "Thanks so much!")])
 
     def test_text_override_wins_over_draft(self):
         with temp_business():
@@ -43,7 +45,7 @@ class PostReviewReplyTests(unittest.TestCase):
                 result = actions.post_review_reply(conn, rid, text="edited by human")
 
             self.assertEqual(result["posted_reply"], "edited by human")
-            self.assertEqual(fake.posted, [("e2", "edited by human")])
+            self.assertEqual(fake.posted, [("e2", None, "edited by human")])
 
     def test_requires_some_text(self):
         with temp_business():
@@ -65,7 +67,7 @@ class PostReviewReplyTests(unittest.TestCase):
             store.update_review(conn, rid, draft_reply="hi", status="pending_review")
 
             class FailingClient:
-                def post_reply(self, external_id, text):
+                def post_reply(self, external_id, location_id, text):
                     raise RuntimeError("boom")
 
             with patch("lib.actions.get_google_client", return_value=FailingClient()):

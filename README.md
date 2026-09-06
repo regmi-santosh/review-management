@@ -88,6 +88,8 @@ Each business is fully isolated — its own DB (`reviews.db`), its own Google OA
      "google_location_id": ""
    }
    ```
+   For a business with multiple physical locations under one account, use `"google_location_ids": ["...", "..."]` instead of the singular `google_location_id` — every review gets tagged with which location it came from, and replies get posted back to the matching one.
+
    Optional per-business overrides (fall back to the top-level `.env` / defaults when omitted): `"confidence_threshold": 0.9`, `"slack_webhook_url": "..."`, `"google_client_mode": "mock"`.
 3. Add `profile.md` — reply voice, signature, any business-specific escalation notes (see the example in `businesses/brows-and-threading-city/profile.md`).
 4. For demo/dev purposes, add a `seed_reviews.json` with a few sample reviews in the same shape as the existing one.
