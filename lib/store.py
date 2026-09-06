@@ -32,6 +32,18 @@ CREATE TABLE IF NOT EXISTS reviews (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    finished_at TEXT NOT NULL,
+    fetched INTEGER NOT NULL,
+    already_replied INTEGER NOT NULL,
+    processed INTEGER NOT NULL,
+    posted INTEGER NOT NULL,
+    escalated INTEGER NOT NULL,
+    queued INTEGER NOT NULL,
+    notes TEXT
+);
 """
 
 
@@ -62,7 +74,7 @@ def connect() -> sqlite3.Connection:
     this is called) takes effect."""
     conn = sqlite3.connect(config.active().db_path)
     conn.row_factory = sqlite3.Row
-    conn.execute(SCHEMA)
+    conn.executescript(SCHEMA)
     conn.commit()
     _migrate(conn)
     return conn
@@ -132,3 +144,30 @@ def update_review(conn: sqlite3.Connection, review_id: int, **fields) -> None:
     values = list(fields.values()) + [review_id]
     conn.execute(f"UPDATE reviews SET {columns} WHERE id = ?", values)
     conn.commit()
+
+
+def log_run(
+    conn: sqlite3.Connection,
+    fetched: int,
+    already_replied: int,
+    processed: int,
+    posted: int,
+    escalated: int,
+    queued: int,
+    notes: str = "",
+) -> int:
+    """Record a summary of one review-handler run, so run history survives
+    beyond the chat transcript it happened in."""
+    cur = conn.execute(
+        "INSERT INTO runs "
+        "(finished_at, fetched, already_replied, processed, posted, escalated, queued, notes) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (_now(), fetched, already_replied, processed, posted, escalated, queued, notes),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def last_run(conn: sqlite3.Connection) -> Optional[dict]:
+    row = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+    return dict(row) if row else None
