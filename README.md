@@ -5,7 +5,7 @@ An agentic system that reads Google reviews for a business and handles them:
 1. **Classify** each review (category, sentiment, urgency, confidence).
 2. **Draft** a human-toned reply, in that business's voice.
 3. **Route** it:
-   - **Highly negative** (`sentiment=negative` and `urgency` is `high`/`critical`) → **escalate immediately** to a human (Slack webhook, or console log by default). Reply is held for approval — never auto-posted.
+   - **Highly negative** (`sentiment=negative` and `urgency` is `high`/`critical`) → **escalate immediately** to a human (Telegram and/or Slack, or console log by default). Reply is held for approval — never auto-posted.
    - **High confidence** (`confidence >= CONFIDENCE_THRESHOLD`, default `0.85`) and not highly negative → **auto-post** the reply.
    - **Otherwise** → queue the draft for **human approval**.
 
@@ -13,14 +13,14 @@ The system itself is generic — it isn't written for any one business. The clas
 
 ## Architecture: harness-native, not a Python service
 
-There is no separate LLM API call anywhere in this repo, and no API key for a model. The reasoning — classification, drafting, and the routing policy — is entirely the job of a Claude Code **subagent**, [.claude/agents/review-handler.md](.claude/agents/review-handler.md), which runs as the model already powering your VS Code / Claude Code session. Python only exists for thin, deterministic **tool scripts** that the agent invokes via Bash:
+There is no separate LLM API call anywhere in this repo, and no API key for a model. The reasoning — classification, drafting, and the routing policy — is entirely the job of a Claude Code **subagent**, [.claude/agents/review-handler.md](.claude/agents/review-handler.md), which runs as the model already powering your VS Code / Claude Code session. Python only exists for thin, deterministic **tool scripts** that the agent invokes via Bash. Which agentic harness actually runs those instructions for unattended runs is isolated to `scripts/harnesses/` — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full layering and what's involved in swapping it later:
 
 ```
 tools/
   fetch_reviews.py           pull new reviews from Google (mock or live) into the local DB
   save_review.py             persist the agent's classification + draft + routing decision
   post_reply.py              post a reply through the Google client, mark it posted
-  notify.py                  fire an escalation alert (console / Slack)
+  notify.py                  fire an escalation alert (Telegram / Slack / console)
   list_pending.py            human helper: show everything awaiting a decision
   approve.py                 human helper: post a queued/escalated draft (optionally edited)
   reject.py                  human helper: dismiss a queued review with no reply
@@ -30,6 +30,12 @@ tools/
   learn_voice.py             onboarding: sample a business's pre-existing owner replies into
                               voice_sample.md, to turn into profile.md's voice section
   log_run.py                 append a run summary (see docs/OPERATIONS.md "Run history")
+  send_daily_summary.py      push a tallies+highlights summary through every configured channel
+                              (see docs/OPERATIONS.md "Interactive Telegram")
+  telegram_listen.py         persistent daemon: long-polls Telegram for escalation
+                              approve/reject/edit replies and on-demand summary requests
+  save_social_draft.py       save + broadcast a drafted social-media caption for a 5-star review
+                              (see docs/OPERATIONS.md "Social content drafts")
   check_health.py            OAuth/secrets/queue/last-run health check (see docs/OPERATIONS.md)
 
 lib/                  shared code the tools above import (no ORM, no web framework)
@@ -40,8 +46,15 @@ lib/                  shared code the tools above import (no ORM, no web framewo
   store.py             plain sqlite3 (stdlib) persistence — no ORM
   google_client.py    GoogleBusinessProfileClient interface + Mock/Live implementations (stdlib
                        urllib for HTTP — no third-party HTTP client)
-  notifier.py          escalation notifications (console / Slack, via urllib)
+  notifier.py          outbound escalation/summary notifications (Telegram / Slack / console,
+                       via urllib) — no DB coupling
+  telegram_bot.py      inbound side: reads Telegram replies, correlates them to a review, and
+                       acts via actions.py (see docs/OPERATIONS.md "Interactive Telegram")
+  summary.py           builds the tallies+highlights summary text shared by the daily push and
+                       on-demand replies
   actions.py           shared post/reject logic used by the CLI tools
+  logging_setup.py     persistent rotating log file per business (stdlib logging — see
+                       docs/OPERATIONS.md "Structured logging")
 
 businesses/<slug>/     one directory per business — fully isolated data (see "Adding another business")
   business.json        structured facts: name, Maps URL, Google account/location IDs, and
@@ -54,6 +67,12 @@ businesses/<slug>/     one directory per business — fully isolated data (see "
   seed_reviews.json    mock review data used while in mock mode
   reviews.db           (gitignored) this business's own SQLite DB — created automatically,
                        includes a `runs` table logging every review-handler run
+  logs/                (gitignored) this business's own rotating log files — see
+                       docs/OPERATIONS.md "Structured logging" and "Scheduling"
+
+scripts/                launchd job definitions: the daily review-handler run, and the
+                       persistent Telegram listener — see docs/OPERATIONS.md "Scheduling"
+                       and "Interactive Telegram"
 
 tests/                 stdlib unittest suite, fully isolated from real businesses/ data
 ```
@@ -104,9 +123,9 @@ Nothing else changes: the same agent definition, tools, and DB schema work for a
 
 ## Status: Google Business Profile API access
 
-Reading/replying to reviews on Google Maps is only officially possible through the **Google Business Profile API**, which requires Google to manually approve API access for your Cloud project against a verified, owned listing. That access has **not been requested/granted yet**.
+Reading/replying to reviews on Google Maps is only officially possible through the **Google Business Profile API**, which requires Google to manually approve API access for your Cloud project against a verified, owned listing.
 
-**Until it is**, everything runs against `lib/google_client.py::MockGoogleBusinessProfileClient`, seeded from each business's `seed_reviews.json`, so the full classify → draft → route pipeline can be exercised end-to-end today.
+**Brows & Threading City is live**: access was granted, and the system runs against the real API for it (`google_client_mode: "live"`) — first full run fetched 362 real reviews, learned the business's established voice from ~330 of its own past replies, and processed the 31 genuinely unanswered ones. A new business you add still defaults to `lib/google_client.py::MockGoogleBusinessProfileClient` (seeded from its own `seed_reviews.json`) until its own API access is requested and granted, so the classify → draft → route pipeline can be exercised end-to-end before going live.
 
 **For the full walkthrough of getting live API access and generating the OAuth keys, see [docs/API_SETUP.md](docs/API_SETUP.md)** (also covers escalation alerts via Telegram or Slack). Short version: verify the listing → create a Google Cloud OAuth client → request Business Profile API access (manual review, days-to-weeks) → run `tools/google_oauth_setup.py` for a refresh token → run `tools/google_list_locations.py` to find your IDs → set `GOOGLE_CLIENT_MODE=live`.
 
@@ -139,6 +158,7 @@ Top-level `.env` holds cross-cutting defaults, overridable per business:
 | `CONFIDENCE_THRESHOLD` | `0.85` | Minimum confidence to auto-post — unless a business sets its own `confidence_threshold` in `business.json`. |
 | `GOOGLE_CLIENT_MODE` | `mock` | `mock` or `live` — unless a business sets its own `google_client_mode` in `business.json`. |
 | `SLACK_WEBHOOK_URL` | — | Escalation alerts destination — unless a business sets its own `slack_webhook_url` in `business.json`. |
+| `AGENT_HARNESS` | `claude-code` | Which `scripts/harnesses/<name>.sh` adapter runs the agent for unattended runs — top-level only, not a per-business override. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) "Harness layer". |
 
 Everything specific to one business lives under `businesses/<slug>/`, never the top-level `.env`:
 - `business.json` — name, Maps URL, Google account/location IDs, and any of the overrides above.

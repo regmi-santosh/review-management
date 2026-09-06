@@ -3,7 +3,8 @@
 still actually work (catches Testing-mode's 7-day refresh token expiry
 before it silently breaks fetch/post), checks secrets-file permissions,
 confirms an escalation channel (Telegram/Slack) is actually configured,
-and reports the review queue and last run.
+confirms the configured agentic harness (see docs/ARCHITECTURE.md) has a
+matching adapter, and reports the review queue and last run.
 
 Exit code: 0 if everything's OK, 1 if there are warnings, 2 if anything failed.
 
@@ -19,7 +20,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+REPO_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_DIR))
 
 from lib import config, notifier, store
 from lib.cli import add_business_arg, apply_business_arg
@@ -81,6 +83,18 @@ def check_escalation_channel(business: config.Business) -> tuple:
     return OK, f"configured: {channels}"
 
 
+def check_agent_harness() -> tuple:
+    harness = config.agent_harness()
+    adapter = REPO_DIR / "scripts" / "harnesses" / f"{harness}.sh"
+    if not adapter.exists():
+        return FAIL, (
+            f"AGENT_HARNESS={harness} but no adapter at scripts/harnesses/{harness}.sh - "
+            "the next unattended run (scripts/run_review_handler.sh) will fail before it even "
+            "starts. See docs/ARCHITECTURE.md 'Harness layer'."
+        )
+    return OK, f"{harness} (scripts/harnesses/{harness}.sh)"
+
+
 def check_queue(conn) -> tuple:
     rows = store.list_reviews(conn)
     pending = [r for r in rows if r["status"] in ("pending_review", "escalated")]
@@ -123,6 +137,7 @@ def main() -> None:
         ("Secrets file permissions", check_secrets_permissions(business)),
         ("Google OAuth", check_oauth(business)),
         ("Escalation channel", check_escalation_channel(business)),
+        ("Agent harness", check_agent_harness()),
         ("Review queue", check_queue(conn)),
         ("Last run", check_last_run(conn)),
     ]

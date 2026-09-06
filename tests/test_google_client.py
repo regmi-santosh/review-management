@@ -25,6 +25,25 @@ class MockClientTests(unittest.TestCase):
             self.assertEqual(reviews[0].external_id, "s1")
             self.assertIsNone(reviews[0].existing_reply)
             self.assertIsNone(reviews[0].location_id)
+            self.assertIsNone(reviews[0].profile_photo_url)
+            self.assertFalse(reviews[0].is_anonymous)
+
+    def test_fetch_reviews_picks_up_reviewer_detail_from_seed(self):
+        seed = [
+            {
+                "external_id": "s3",
+                "author_name": "A Google User",
+                "rating": 5,
+                "text": "hi",
+                "create_time": "2026-01-01T00:00:00Z",
+                "profile_photo_url": "https://example.com/photo.jpg",
+                "is_anonymous": True,
+            }
+        ]
+        with temp_business(seed_reviews=seed):
+            reviews = MockGoogleBusinessProfileClient().fetch_reviews()
+            self.assertEqual(reviews[0].profile_photo_url, "https://example.com/photo.jpg")
+            self.assertTrue(reviews[0].is_anonymous)
 
     def test_fetch_reviews_picks_up_location_id_from_seed(self):
         seed = [
@@ -99,6 +118,62 @@ class LiveClientMultiLocationTests(unittest.TestCase):
             self.assertEqual(set(by_id), {"r1", "r2"})
             self.assertEqual(by_id["r1"].location_id, "loc-1")
             self.assertEqual(by_id["r2"].location_id, "loc-2")
+
+    def test_fetch_reviews_parses_reviewer_detail_from_response(self):
+        facts = _authorized_business_facts(["loc-1"])
+        with temp_business(business_facts=facts) as business:
+            _with_oauth_secrets(business)
+            client = google_client.LiveGoogleBusinessProfileClient()
+
+            def fake_request(method, url, headers=None, json_body=None):
+                return {
+                    "reviews": [
+                        {
+                            "reviewId": "r1",
+                            "reviewer": {
+                                "displayName": "A Google User",
+                                "profilePhotoUrl": "https://example.com/photo.jpg",
+                                "isAnonymous": True,
+                            },
+                            "starRating": "FIVE",
+                            "comment": "hi",
+                            "createTime": "2026-01-01T00:00:00Z",
+                        }
+                    ]
+                }
+
+            with patch.object(client, "_headers", return_value={}):
+                with patch("lib.google_client._request", side_effect=fake_request):
+                    reviews = client.fetch_reviews()
+
+            self.assertEqual(reviews[0].profile_photo_url, "https://example.com/photo.jpg")
+            self.assertTrue(reviews[0].is_anonymous)
+
+    def test_fetch_reviews_defaults_reviewer_detail_when_absent(self):
+        facts = _authorized_business_facts(["loc-1"])
+        with temp_business(business_facts=facts) as business:
+            _with_oauth_secrets(business)
+            client = google_client.LiveGoogleBusinessProfileClient()
+
+            def fake_request(method, url, headers=None, json_body=None):
+                return {
+                    "reviews": [
+                        {
+                            "reviewId": "r1",
+                            "reviewer": {"displayName": "A"},
+                            "starRating": "FIVE",
+                            "comment": "hi",
+                            "createTime": "2026-01-01T00:00:00Z",
+                        }
+                    ]
+                }
+
+            with patch.object(client, "_headers", return_value={}):
+                with patch("lib.google_client._request", side_effect=fake_request):
+                    reviews = client.fetch_reviews()
+
+            self.assertIsNone(reviews[0].profile_photo_url)
+            self.assertFalse(reviews[0].is_anonymous)
 
     def test_post_reply_uses_given_location_in_url(self):
         facts = _authorized_business_facts(["loc-1", "loc-2"])

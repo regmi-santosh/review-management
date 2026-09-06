@@ -22,7 +22,7 @@ def post_review_reply(conn: sqlite3.Connection, review_id: int, text: Optional[s
 
     client = get_google_client()
     try:
-        client.post_reply(review["external_id"], reply_text)
+        client.post_reply(review["external_id"], review.get("location_id"), reply_text)
     except Exception:
         logger.exception(f"failed to post reply for review {review_id} (external_id={review['external_id']})")
         raise

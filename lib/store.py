@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS reviews (
     posted_reply TEXT,
     reply_source TEXT,
     location_id TEXT,
+    telegram_message_id TEXT,
+    profile_photo_url TEXT,
+    is_anonymous INTEGER,
+    draft_social_post TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -44,6 +48,11 @@ CREATE TABLE IF NOT EXISTS runs (
     escalated INTEGER NOT NULL,
     queued INTEGER NOT NULL,
     notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
 );
 """
 
@@ -83,12 +92,27 @@ def _migrate(conn: sqlite3.Connection) -> None:
             )
         conn.commit()
 
+    if "telegram_message_id" not in columns:
+        conn.execute("ALTER TABLE reviews ADD COLUMN telegram_message_id TEXT")
+        conn.commit()
+
+    if "profile_photo_url" not in columns:
+        conn.execute("ALTER TABLE reviews ADD COLUMN profile_photo_url TEXT")
+        conn.execute("ALTER TABLE reviews ADD COLUMN is_anonymous INTEGER")
+        conn.execute("ALTER TABLE reviews ADD COLUMN draft_social_post TEXT")
+        conn.commit()
+
 
 def connect() -> sqlite3.Connection:
     """Connect to the active business's own DB (config.active().db_path),
     resolved fresh on every call so a tool's --business flag (applied before
     this is called) takes effect."""
     conn = sqlite3.connect(config.active().db_path)
+    # Default busy_timeout is 0 (no wait/retry on lock contention). Once the
+    # Telegram listener (lib/telegram_bot.py) can write to this same DB at any
+    # moment while a review-handler run is also mid-flight, a brief wait here
+    # is needed instead of an immediate "database is locked" error.
+    conn.execute("PRAGMA busy_timeout = 5000")
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     conn.commit()
@@ -109,6 +133,8 @@ def insert_review(
     create_time: str,
     existing_reply: Optional[str] = None,
     location_id: Optional[str] = None,
+    profile_photo_url: Optional[str] = None,
+    is_anonymous: bool = False,
 ) -> Optional[int]:
     """Insert a new review if external_id isn't already known.
 
@@ -120,6 +146,10 @@ def insert_review(
     `location_id` identifies which of the business's locations this review
     came from (see lib.config.Business.google_location_ids) - required to
     post a reply to a multi-location business's review later.
+
+    `profile_photo_url`/`is_anonymous` are the only other reviewer detail
+    Google's API exposes (no email, no profile link) - captured for
+    possible future use, not read by anything today.
 
     Returns the new row id, or None if it already existed.
     """
@@ -134,9 +164,13 @@ def insert_review(
     reply_source = "owner" if existing_reply else None
     cur = conn.execute(
         "INSERT INTO reviews "
-        "(external_id, author_name, rating, text, create_time, status, posted_reply, reply_source, location_id, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (external_id, author_name, rating, text, create_time, status, existing_reply, reply_source, location_id, ts, ts),
+        "(external_id, author_name, rating, text, create_time, status, posted_reply, reply_source, location_id, "
+        "profile_photo_url, is_anonymous, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            external_id, author_name, rating, text, create_time, status, existing_reply, reply_source, location_id,
+            profile_photo_url, int(is_anonymous), ts, ts,
+        ),
     )
     conn.commit()
     return cur.lastrowid
@@ -191,4 +225,25 @@ def log_run(
 
 def last_run(conn: sqlite3.Connection) -> Optional[dict]:
     row = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+    return dict(row) if row else None
+
+
+def get_meta(conn: sqlite3.Connection, key: str, default: Optional[str] = None) -> Optional[str]:
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+
+
+def get_review_by_telegram_message_id(conn: sqlite3.Connection, message_id: str) -> Optional[dict]:
+    row = conn.execute(
+        "SELECT * FROM reviews WHERE telegram_message_id = ?", (message_id,)
+    ).fetchone()
     return dict(row) if row else None

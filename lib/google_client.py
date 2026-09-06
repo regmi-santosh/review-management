@@ -38,6 +38,8 @@ class RawReview:
     create_time: str
     existing_reply: Optional[str] = None  # set if Google already has an owner reply on this review
     location_id: Optional[str] = None  # which of the business's locations this came from
+    profile_photo_url: Optional[str] = None  # reviewer's Google profile photo, if not anonymous
+    is_anonymous: bool = False  # True if the reviewer posted as "A Google User"
 
 
 class GoogleBusinessProfileClient(ABC):
@@ -61,7 +63,7 @@ class MockGoogleBusinessProfileClient(GoogleBusinessProfileClient):
         raw = json.loads(config.active().seed_reviews_path.read_text())
         return [RawReview(**item) for item in raw]
 
-    def post_reply(self, external_id: str, reply_text: str) -> None:
+    def post_reply(self, external_id: str, location_id: Optional[str], reply_text: str) -> None:
         get_logger("google_client").info(f"[mock] would post reply to review {external_id}")
         print(f"[mock-google] would post reply to review {external_id}:\n{reply_text}")
 
@@ -205,12 +207,13 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
                             create_time=item["createTime"],
                             existing_reply=item.get("reviewReply", {}).get("comment") or None,
                             location_id=location_id,
+                            profile_photo_url=item.get("reviewer", {}).get("profilePhotoUrl"),
+                            is_anonymous=item.get("reviewer", {}).get("isAnonymous", False),
                         )
                     )
-                )
-            page_token = data.get("nextPageToken")
-            if not page_token:
-                break
+                page_token = data.get("nextPageToken")
+                if not page_token:
+                    break
         get_logger("google_client").info(f"fetched {len(reviews)} reviews from Google (account={self._account_id})")
         return reviews
 

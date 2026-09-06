@@ -39,6 +39,25 @@ class InsertAndGetTests(unittest.TestCase):
             conn = store.connect()
             self.assertIsNone(store.get_review(conn, 999))
 
+    def test_insert_with_reviewer_detail(self):
+        with temp_business():
+            conn = store.connect()
+            rid = store.insert_review(
+                conn, "ext-4", "D", 5, "great", "2026-01-01T00:00:00Z",
+                profile_photo_url="https://example.com/p.jpg", is_anonymous=True,
+            )
+            row = store.get_review(conn, rid)
+            self.assertEqual(row["profile_photo_url"], "https://example.com/p.jpg")
+            self.assertEqual(row["is_anonymous"], 1)
+
+    def test_insert_without_reviewer_detail_defaults(self):
+        with temp_business():
+            conn = store.connect()
+            rid = store.insert_review(conn, "ext-5", "E", 5, "great", "2026-01-01T00:00:00Z")
+            row = store.get_review(conn, rid)
+            self.assertIsNone(row["profile_photo_url"])
+            self.assertEqual(row["is_anonymous"], 0)
+
 
 class UpdateAndListTests(unittest.TestCase):
     def test_update_review(self):
@@ -147,6 +166,112 @@ class MigrationTests(unittest.TestCase):
             conn = store.connect()
             row = conn.execute("SELECT * FROM reviews WHERE external_id = 'old-1'").fetchone()
             self.assertIsNone(row["location_id"])
+
+    def test_backfills_telegram_message_id_column_as_null(self):
+        with temp_business() as business:
+            conn = sqlite3.connect(business.db_path)
+            conn.execute(
+                """
+                CREATE TABLE reviews (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    external_id TEXT UNIQUE NOT NULL,
+                    author_name TEXT NOT NULL,
+                    rating INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    create_time TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'new',
+                    category TEXT, sentiment TEXT, urgency TEXT, confidence REAL,
+                    reasoning TEXT, draft_reply TEXT, posted_reply TEXT,
+                    reply_source TEXT, location_id TEXT,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO reviews (external_id, author_name, rating, text, create_time, "
+                "status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                ("old-1", "A", 5, "x", "2026-01-01T00:00:00Z", "new", "ts", "ts"),
+            )
+            conn.commit()
+            conn.close()
+
+            conn = store.connect()  # triggers _migrate
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(reviews)")}
+            self.assertIn("telegram_message_id", columns)
+            row = conn.execute("SELECT * FROM reviews WHERE external_id = 'old-1'").fetchone()
+            self.assertIsNone(row["telegram_message_id"])
+
+    def test_backfills_reviewer_detail_columns_as_null(self):
+        with temp_business() as business:
+            conn = sqlite3.connect(business.db_path)
+            conn.execute(
+                """
+                CREATE TABLE reviews (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    external_id TEXT UNIQUE NOT NULL,
+                    author_name TEXT NOT NULL,
+                    rating INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    create_time TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'new',
+                    category TEXT, sentiment TEXT, urgency TEXT, confidence REAL,
+                    reasoning TEXT, draft_reply TEXT, posted_reply TEXT,
+                    reply_source TEXT, location_id TEXT, telegram_message_id TEXT,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO reviews (external_id, author_name, rating, text, create_time, "
+                "status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                ("old-1", "A", 5, "x", "2026-01-01T00:00:00Z", "new", "ts", "ts"),
+            )
+            conn.commit()
+            conn.close()
+
+            conn = store.connect()  # triggers _migrate
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(reviews)")}
+            self.assertTrue({"profile_photo_url", "is_anonymous", "draft_social_post"} <= columns)
+            row = conn.execute("SELECT * FROM reviews WHERE external_id = 'old-1'").fetchone()
+            self.assertIsNone(row["profile_photo_url"])
+            self.assertIsNone(row["is_anonymous"])
+            self.assertIsNone(row["draft_social_post"])
+
+
+class MetaTests(unittest.TestCase):
+    def test_get_missing_key_returns_default(self):
+        with temp_business():
+            conn = store.connect()
+            self.assertIsNone(store.get_meta(conn, "nope"))
+            self.assertEqual(store.get_meta(conn, "nope", default="fallback"), "fallback")
+
+    def test_set_then_get(self):
+        with temp_business():
+            conn = store.connect()
+            store.set_meta(conn, "telegram_update_offset", "42")
+            self.assertEqual(store.get_meta(conn, "telegram_update_offset"), "42")
+
+    def test_set_overwrites_existing_key(self):
+        with temp_business():
+            conn = store.connect()
+            store.set_meta(conn, "k", "1")
+            store.set_meta(conn, "k", "2")
+            self.assertEqual(store.get_meta(conn, "k"), "2")
+
+
+class GetReviewByTelegramMessageIdTests(unittest.TestCase):
+    def test_found(self):
+        with temp_business():
+            conn = store.connect()
+            rid = store.insert_review(conn, "ext-1", "Alice", 5, "great", "2026-01-01T00:00:00Z")
+            store.update_review(conn, rid, telegram_message_id="123")
+            row = store.get_review_by_telegram_message_id(conn, "123")
+            self.assertEqual(row["id"], rid)
+
+    def test_not_found_returns_none(self):
+        with temp_business():
+            conn = store.connect()
+            self.assertIsNone(store.get_review_by_telegram_message_id(conn, "999"))
 
 
 class RunLogTests(unittest.TestCase):

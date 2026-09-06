@@ -68,6 +68,14 @@ def _global_get(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+def agent_harness() -> str:
+    """Which scripts/harnesses/<name>.sh adapter runs review-handler.md for
+    unattended runs (scripts/run_review_handler.sh) - see
+    docs/ARCHITECTURE.md "Harness layer". Not per-business; this is a
+    top-level .env setting only, same as BUSINESS_SLUG."""
+    return _global_get("AGENT_HARNESS", "claude-code")
+
+
 def _default_business_slug() -> str:
     if BUSINESSES_DIR.is_dir():
         subdirs = sorted(p.name for p in BUSINESSES_DIR.iterdir() if p.is_dir())

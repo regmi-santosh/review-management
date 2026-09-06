@@ -94,6 +94,65 @@ class NotifyEscalationTests(unittest.TestCase):
             self.assertIn("Slack", printed)
             self.assertNotIn("[notify] \U0001F6A8", printed)
 
+    def test_returns_telegram_message_id_on_success(self):
+        with temp_business() as business:
+            business.save_secret("TELEGRAM_BOT_TOKEN", "tok")
+            business.save_secret("TELEGRAM_CHAT_ID", "123")
+            with patch.object(notifier.TelegramNotifier, "send", return_value="555"):
+                message_id = notifier.notify_escalation(REVIEW, "test reason")
+            self.assertEqual(message_id, "555")
+
+    def test_returns_none_when_telegram_not_configured(self):
+        facts = {"slack_webhook_url": "https://hooks.slack.com/services/x"}
+        with temp_business(business_facts=facts):
+            with patch.object(notifier.SlackNotifier, "send"):
+                message_id = notifier.notify_escalation(REVIEW, "test reason")
+            self.assertIsNone(message_id)
+
+
+class NotifyDailySummaryTests(unittest.TestCase):
+    def test_sends_via_every_configured_connector(self):
+        facts = {"slack_webhook_url": "https://hooks.slack.com/services/x"}
+        with temp_business(business_facts=facts) as business:
+            business.save_secret("TELEGRAM_BOT_TOKEN", "tok")
+            business.save_secret("TELEGRAM_CHAT_ID", "123")
+
+            with patch.object(notifier.SlackNotifier, "send") as mock_slack_send:
+                with patch.object(notifier.TelegramNotifier, "send") as mock_telegram_send:
+                    notifier.notify_daily_summary("today's summary text")
+
+            mock_slack_send.assert_called_once_with("today's summary text")
+            mock_telegram_send.assert_called_once_with("today's summary text")
+
+    def test_falls_back_to_console_when_nothing_configured(self):
+        with temp_business():
+            with patch("builtins.print") as mock_print:
+                notifier.notify_daily_summary("today's summary text")
+            printed = "\n".join(str(c.args[0]) for c in mock_print.call_args_list)
+            self.assertIn("today's summary text", printed)
+
+
+class NotifySocialDraftTests(unittest.TestCase):
+    def test_sends_via_every_configured_connector(self):
+        facts = {"slack_webhook_url": "https://hooks.slack.com/services/x"}
+        with temp_business(business_facts=facts) as business:
+            business.save_secret("TELEGRAM_BOT_TOKEN", "tok")
+            business.save_secret("TELEGRAM_CHAT_ID", "123")
+
+            with patch.object(notifier.SlackNotifier, "send") as mock_slack_send:
+                with patch.object(notifier.TelegramNotifier, "send") as mock_telegram_send:
+                    notifier.notify_social_draft("caption idea")
+
+            mock_slack_send.assert_called_once_with("caption idea")
+            mock_telegram_send.assert_called_once_with("caption idea")
+
+    def test_falls_back_to_console_when_nothing_configured(self):
+        with temp_business():
+            with patch("builtins.print") as mock_print:
+                notifier.notify_social_draft("caption idea")
+            printed = "\n".join(str(c.args[0]) for c in mock_print.call_args_list)
+            self.assertIn("caption idea", printed)
+
 
 if __name__ == "__main__":
     unittest.main()
