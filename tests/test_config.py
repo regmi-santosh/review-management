@@ -29,6 +29,25 @@ class BusinessFactsTests(unittest.TestCase):
         with temp_business(business_facts={"google_client_mode": "live"}) as business:
             self.assertEqual(business.google_client_mode, "live")
 
+
+class LocationIdsTests(unittest.TestCase):
+    def test_no_location_configured(self):
+        with temp_business(business_facts={}) as business:
+            self.assertEqual(business.google_location_ids, [])
+
+    def test_single_location_id_wrapped_in_list(self):
+        with temp_business(business_facts={"google_location_id": "loc-1"}) as business:
+            self.assertEqual(business.google_location_ids, ["loc-1"])
+
+    def test_multiple_location_ids(self):
+        with temp_business(business_facts={"google_location_ids": ["loc-1", "loc-2"]}) as business:
+            self.assertEqual(business.google_location_ids, ["loc-1", "loc-2"])
+
+    def test_plural_list_takes_priority_over_singular(self):
+        facts = {"google_location_id": "loc-1", "google_location_ids": ["loc-2", "loc-3"]}
+        with temp_business(business_facts=facts) as business:
+            self.assertEqual(business.google_location_ids, ["loc-2", "loc-3"])
+
     def test_google_client_mode_default_is_mock(self):
         # Isolated from the real project's top-level .env, which sets this
         # process-wide (GOOGLE_CLIENT_MODE=live for the real business) -

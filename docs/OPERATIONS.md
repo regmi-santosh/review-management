@@ -11,8 +11,9 @@ python3 tools/check_health.py [--business <slug>]
 Checks, in order:
 1. **Secrets file permissions** — `businesses/<slug>/.env` should be owner-only (600). If it's found looser, this fixes it automatically and reports that it did.
 2. **Google OAuth** — actually attempts a token refresh (only when `google_client_mode` is `live`). This is what catches the Testing-mode 7-day refresh token expiry (see `docs/API_SETUP.md`) *before* it silently breaks `fetch_reviews.py`/`post_reply.py` — the error message tells you exactly which command to re-run.
-3. **Review queue** — how many reviews are sitting in `pending_review`/`escalated`, and how long the oldest one has been waiting. Flags as a warning if anything's escalated or something's been queued over a day.
-4. **Last run** — when the review-handler agent last ran and what it did (see "Run history" below).
+3. **Escalation channel** — warns if no Telegram or Slack connector is configured (see "Notification connectors" below), since escalations printing to a console nobody's watching defeats the point once this runs unattended.
+4. **Review queue** — how many reviews are sitting in `pending_review`/`escalated`, and how long the oldest one has been waiting. Flags as a warning if anything's escalated or something's been queued over a day.
+5. **Last run** — when the review-handler agent last ran and what it did (see "Run history" below).
 
 Exit code: `0` all OK, `1` warnings present, `2` something failed — usable as a monitoring check if this ever runs on a schedule.
 
@@ -21,6 +22,15 @@ Run this periodically (daily is reasonable) even before any scheduler exists —
 ## Run history
 
 Every review-handler run logs a summary row (fetched/already-replied/processed/posted/escalated/queued counts, plus notes) via `tools/log_run.py`, stored in the business's own `reviews.db` (a `runs` table, separate from the `reviews` table). This is what `check_health.py`'s "Last run" check reads. It exists so run history survives beyond whatever chat session it happened in — useful for noticing "it's been 3 days since this last ran" or "posting volume dropped off" without digging through transcripts.
+
+## Notification connectors
+
+`lib/notifier.py` sends escalation alerts through a small plug-and-play connector interface — the same interface-plus-swappable-implementations shape as `lib/google_client.py`'s Mock/Live clients. Each channel is a class implementing `Notifier.send(message)`:
+
+- `TelegramNotifier` — set up via `python3 tools/telegram_setup.py --business <slug> --bot-token <token>` (see `docs/API_SETUP.md` for the non-technical setup steps). Recommended default: no business/developer account needed, just the Telegram app.
+- `SlackNotifier` — set up via a `SLACK_WEBHOOK_URL` (see `docs/API_SETUP.md`).
+
+`get_configured_notifiers()` returns an instance for every channel a business actually has credentials for; `notify_escalation()` sends to all of them (not just the first), and only falls back to printing to console if none are configured or every send fails. **Adding a new channel** (email, Discord, SMS, ...) means writing one class and adding it to `_CONNECTORS` in `lib/notifier.py` — nothing else in the codebase (tools, the agent, tests for other channels) needs to change. **Removing a channel** is deleting its `_CONNECTORS` entry.
 
 ## Batch-size guardrail
 

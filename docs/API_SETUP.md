@@ -87,6 +87,8 @@ Put the numeric IDs into `businesses/<slug>/business.json`:
 }
 ```
 
+If the tool lists more than one location for this account (a business with several physical locations), use `"google_location_ids": ["...", "..."]` instead of the singular field — every review gets tagged with which location it came from, and replies route back to the matching one.
+
 ## Step 6 — Go live
 
 Set `"google_client_mode": "live"` in `businesses/<slug>/business.json` (or `GOOGLE_CLIENT_MODE=live` in the top-level `.env` if this is the only/default business). `tools/fetch_reviews.py` and `tools/post_reply.py` now hit the real API for that business — no other code changes needed.
@@ -98,12 +100,30 @@ Set `"google_client_mode": "live"` in `businesses/<slug>/business.json` (or `GOO
 
 **Note on API stability**: Google has reorganized these APIs more than once (the old monolithic v4 "My Business API" was split into separate Account Management / Business Information / etc. APIs in 2022). As of this writing (September 2026) the reviews list/reply endpoints still live under `mybusiness.googleapis.com/v4`, confirmed against Google's own current docs and by actually calling them. If `fetch_reviews.py`/`post_reply.py` start 404ing, check [the current reference docs](https://developers.google.com/my-business/reference/rest) — the endpoints in `LiveGoogleBusinessProfileClient` may need updating to whatever Google calls them by then.
 
-## Slack webhook (optional, for escalation alerts)
+## Escalation alerts: Telegram or Slack (optional, but strongly recommended before scheduling)
 
-Without this, escalations just print to the console. To get a real alert instead:
+Without either of these, escalations just print to console — fine while you're watching the terminal, but useless once this runs unattended/scheduled (see `docs/OPERATIONS.md`). Both can be set up at once; `lib/notifier.py` sends to every channel that's configured, not just the first.
+
+### Telegram (recommended for a non-technical business owner)
+
+No business/developer account needed — just the Telegram app.
+
+1. **You (the business owner)**: open Telegram, search for **BotFather** (the official bot — look for the blue verified checkmark), and start a chat.
+2. Send `/newbot`, then follow the prompts: a display name (e.g. "Brows and Threading Alerts") and a username ending in `bot` (e.g. `BrowsThreadingAlertsBot`).
+3. BotFather replies with a token like `123456789:AAF...` — copy it.
+4. Open a chat with your new bot (search its username) and send it any message, e.g. "hi".
+5. Hand that token to whoever's running the setup.
+
+Then, from the repo:
+
+```bash
+python3 tools/telegram_setup.py --business <slug> --bot-token <token from step 3>
+```
+
+This finds the chat from step 4, saves the bot token and chat id into `businesses/<slug>/.env`, and sends a confirmation message to Telegram immediately so you can verify it worked.
+
+### Slack (if the business already uses it)
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**.
 2. Pick your workspace, then under **Incoming Webhooks**, toggle it on and **Add New Webhook to Workspace**, choosing the channel to post to.
 3. Copy the webhook URL into `.env` (`SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...`) for a global default, or into a specific business's `business.json` as `"slack_webhook_url": "..."` if that business's escalations should go to a different Slack workspace/channel than the default.
-
-`lib/notifier.py` posts there instead of logging to console the next time a review is escalated.
