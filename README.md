@@ -13,7 +13,7 @@ The system itself is generic — it isn't written for any one business. The clas
 
 ## Architecture: harness-native, not a Python service
 
-There is no separate LLM API call anywhere in this repo, and no API key for a model. The reasoning — classification, drafting, and the routing policy — is entirely the job of a Claude Code **subagent**, [.claude/agents/review-handler.md](.claude/agents/review-handler.md), which runs as the model already powering your VS Code / Claude Code session. Python only exists for thin, deterministic **tool scripts** that the agent invokes via Bash:
+There is no separate LLM API call anywhere in this repo, and no API key for a model. The reasoning — classification, drafting, and the routing policy — is entirely the job of a Claude Code **subagent**, [.claude/agents/review-handler.md](.claude/agents/review-handler.md), which runs as the model already powering your VS Code / Claude Code session. Python only exists for thin, deterministic **tool scripts** that the agent invokes via Bash. Which agentic harness actually runs those instructions for unattended runs is isolated to `scripts/harnesses/` — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full layering and what's involved in swapping it later:
 
 ```
 tools/
@@ -158,6 +158,7 @@ Top-level `.env` holds cross-cutting defaults, overridable per business:
 | `CONFIDENCE_THRESHOLD` | `0.85` | Minimum confidence to auto-post — unless a business sets its own `confidence_threshold` in `business.json`. |
 | `GOOGLE_CLIENT_MODE` | `mock` | `mock` or `live` — unless a business sets its own `google_client_mode` in `business.json`. |
 | `SLACK_WEBHOOK_URL` | — | Escalation alerts destination — unless a business sets its own `slack_webhook_url` in `business.json`. |
+| `AGENT_HARNESS` | `claude-code` | Which `scripts/harnesses/<name>.sh` adapter runs the agent for unattended runs — top-level only, not a per-business override. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) "Harness layer". |
 
 Everything specific to one business lives under `businesses/<slug>/`, never the top-level `.env`:
 - `business.json` — name, Maps URL, Google account/location IDs, and any of the overrides above.

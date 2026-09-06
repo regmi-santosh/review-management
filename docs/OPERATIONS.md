@@ -92,7 +92,20 @@ rm ~/Library/LaunchAgents/com.review-management.brows-and-threading-city.plist
 
 All the decision logic lives in `lib/telegram_bot.py` (unit tested — see `tests/test_telegram_bot.py`); `tools/telegram_listen.py` is a thin, untested loop around it, matching this repo's convention that only `lib/` gets tests.
 
-**Install** (this is a persistent daemon — `RunAtLoad`+`KeepAlive`, not the daily job's `StartCalendarInterval`):
+**Run it manually** (no `launchd` job needed — useful to try this out, or as the everyday way to run it until the job below is installed):
+
+```bash
+# Foreground (Ctrl-C to stop) - good for a first try, or to watch it live:
+bash scripts/run_telegram_listener.sh
+
+# Backgrounded, survives closing the terminal:
+nohup bash scripts/run_telegram_listener.sh > /dev/null 2>&1 &
+echo $!   # note this PID if you want to `kill` it directly later
+```
+
+Same script the `launchd` job below runs — `cd`s to the repo and execs `tools/telegram_listen.py --business brows-and-threading-city`, so manual and scheduled runs behave identically. **Stop a backgrounded one**: `kill $(pgrep -f tools/telegram_listen.py)` (or `kill <pid>` from the `echo $!` above). **Check it's still alive**: `pgrep -fl tools/telegram_listen.py`.
+
+**Install** (this is a persistent daemon — `RunAtLoad`+`KeepAlive`, not the daily job's `StartCalendarInterval`; only do this once you're ready for it to run unattended indefinitely rather than manually):
 
 ```bash
 cp "scripts/com.review-management.brows-and-threading-city.telegram-listener.plist" ~/Library/LaunchAgents/
