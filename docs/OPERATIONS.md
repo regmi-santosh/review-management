@@ -42,6 +42,47 @@ stdlib `unittest` only — no new dependency, consistent with the rest of this p
 
 Run this after any change to `lib/` before trusting it against real data. Two real bugs (missing pagination, reply-overwrite risk — see `docs/API_SETUP.md`) were only found by manually testing against real data before this suite existed; it exists so the next regression gets caught here instead.
 
+## Scheduling (unattended runs)
+
+Runs locally via `launchd` on this Mac — **not** a cloud routine. A cloud routine clones a fresh checkout from GitHub on every run, which can't see `businesses/<slug>/.env` (Google OAuth, Telegram credentials) or `businesses/<slug>/reviews.db` (which reviews are already handled) — both are deliberately gitignored, so a cloud routine would either have no credentials at all, or require embedding real secrets into the routine definition stored in Anthropic's cloud. `launchd` runs on this exact machine, this exact working copy, so it just sees the same filesystem an interactive session would.
+
+- `scripts/run_review_handler.sh` — invokes `claude -p "Run the review-handler agent for brows-and-threading-city..." --permission-mode auto` and appends output to `businesses/brows-and-threading-city/logs/launchd.log`. `--permission-mode auto` is the same safety posture used throughout this project's development: normal tool calls proceed without a prompt, but the classifier still blocks bulk/high-risk actions rather than assuming nobody's watching means anything goes.
+- `scripts/com.review-management.brows-and-threading-city.plist` — the `launchd` job definition. Runs once daily at 7:00 AM local time by default; edit the `Hour`/`Minute` values and re-run the bootstrap command below to change it.
+
+**Install** (copies the plist into place and starts the schedule):
+
+```bash
+cp "scripts/com.review-management.brows-and-threading-city.plist" ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.review-management.brows-and-threading-city.plist
+```
+
+**Check it's loaded**: `launchctl print gui/$(id -u)/com.review-management.brows-and-threading-city`
+
+**Run it immediately** (without waiting for the schedule, e.g. to test): `launchctl kickstart gui/$(id -u)/com.review-management.brows-and-threading-city`
+
+**Uninstall**:
+
+```bash
+launchctl bootout gui/$(id -u)/com.review-management.brows-and-threading-city
+rm ~/Library/LaunchAgents/com.review-management.brows-and-threading-city.plist
+```
+
+**Known limitation**: only runs while this Mac is on, awake, and logged in at the scheduled time — `launchd` doesn't run LaunchAgents when the user is logged out, and a sleeping Mac won't wake for it. Fine for a single-owner local setup; revisit if this needs to run independent of any one machine.
+
+`businesses/<slug>/logs/launchd.log` holds each scheduled run's full agent output (appended); `launchd_stdout.log`/`launchd_stderr.log` alongside it should normally stay empty — anything there means the script itself failed to start, before it could even write to its own log. See "Structured logging" below for the separate, rotated application log.
+
+## Structured logging
+
+Console output (`print()`) is lost the moment a session ends or nobody's watching stdout — the interactive experience still prints as before, but the things that matter durably now also go through `lib/logging_setup.py` into a rotating file per business: `businesses/<slug>/logs/app.log` (5MB per file, 5 backups kept, stdlib `logging.handlers.RotatingFileHandler` — no new dependency).
+
+What's logged there today:
+- `lib/actions.py` — every successful post (`posted reply for review N`) and every rejection, plus the full exception (not just a message) if posting fails.
+- `lib/notifier.py` — every escalation trigger, whether it reached Slack, and — at `WARNING` level, since this is the case that matters most — when an escalation reached **no channel at all** and only got printed to a console nobody may be watching.
+- `lib/google_client.py` — how many reviews a live fetch pulled, every live post, and mock-mode "would post" events.
+- `tools/fetch_reviews.py` — a one-line summary of every fetch (fetched/already-replied/actionable counts), and a `WARNING` when the batch-size guardrail trips.
+
+This is additive, not a replacement for the CLI tools' existing stdout contracts (`fetch_reviews.py`'s JSON output, confirmation messages, etc.) — the review-handler agent still parses those exactly as before.
+
 ## Secrets hygiene
 
 `businesses/<slug>/.env` is written with owner-only (600) permissions every time `Business.save_secret()` writes to it (i.e., whenever `tools/google_oauth_setup.py` runs), and `check_health.py` audits/fixes permissions on every run regardless of how the file got there. These files are also gitignored (see `.gitignore`) — they should never end up in a commit.

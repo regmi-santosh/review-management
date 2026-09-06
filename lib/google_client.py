@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from lib import config
+from lib.logging_setup import get_logger
 
 # Retry-with-backoff for transient failures (rate limiting, Google-side
 # hiccups, network blips) - matters once this runs unattended/scheduled
@@ -60,6 +61,7 @@ class MockGoogleBusinessProfileClient(GoogleBusinessProfileClient):
         return [RawReview(**item) for item in raw]
 
     def post_reply(self, external_id: str, reply_text: str) -> None:
+        get_logger("google_client").info(f"[mock] would post reply to review {external_id}")
         print(f"[mock-google] would post reply to review {external_id}:\n{reply_text}")
 
 
@@ -201,6 +203,7 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
             page_token = data.get("nextPageToken")
             if not page_token:
                 break
+        get_logger("google_client").info(f"fetched {len(reviews)} reviews from Google (account={self._account_id})")
         return reviews
 
     def post_reply(self, external_id: str, reply_text: str) -> None:
@@ -209,6 +212,7 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
             f"/reviews/{external_id}/reply"
         )
         _request("PUT", url, headers=self._headers(), json_body={"comment": reply_text})
+        get_logger("google_client").info(f"posted reply to Google for review {external_id}")
 
 
 def get_google_client() -> GoogleBusinessProfileClient:
