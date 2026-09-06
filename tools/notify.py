@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Fire an escalation notification for a review (console log, or Slack if
-SLACK_WEBHOOK_URL is set in .env). Called by the review-handler agent
-immediately when it routes a review to 'escalated'.
+"""Fire an escalation notification for a review (console log, or
+Telegram/Slack if configured - see docs/API_SETUP.md). Called by the
+review-handler agent immediately when it routes a review to 'escalated'.
+
+If sent via Telegram, the message id is saved on the review
+(telegram_message_id) so a later reply to that message (approve/reject/edit
+- see lib/telegram_bot.py) can be matched back to it.
 
 Usage: python3 tools/notify.py --review-id 3 --reason "Health/safety complaint"
 """
@@ -30,7 +34,9 @@ def main() -> None:
         print(f"error: no review with id {args.review_id}", file=sys.stderr)
         sys.exit(1)
 
-    notify_escalation(review, args.reason)
+    telegram_message_id = notify_escalation(review, args.reason)
+    if telegram_message_id:
+        store.update_review(conn, args.review_id, telegram_message_id=telegram_message_id)
 
 
 if __name__ == "__main__":

@@ -122,6 +122,8 @@ python3 tools/telegram_setup.py --business <slug> --bot-token <token from step 3
 
 This finds the chat from step 4, saves the bot token and chat id into `businesses/<slug>/.env`, and sends a confirmation message to Telegram immediately so you can verify it worked.
 
+Telegram is two-way, unlike Slack's webhook: once `tools/telegram_listen.py` is running (see `docs/OPERATIONS.md` "Interactive Telegram"), you can reply to an escalation message to approve/reject/edit it, or send any other message for an on-demand summary — right from the phone, nothing to run from a terminal.
+
 ### Slack (if the business already uses it)
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**.

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.review-management.brows-and-threading-city.telegram-listener</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/sansha/Documents/Projects/brows &amp; threading/review-management/scripts/run_telegram_listener.sh</string>
+    </array>
+
+    <!-- Persistent daemon (long-polls Telegram), not a scheduled one-shot -
+         start it on load and have launchd restart it if it ever exits. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Routine output goes through the rotated businesses/<slug>/logs/app.log
+         (lib/logging_setup.py) instead - these paths should stay empty;
+         anything here means the script itself failed to start, or crashed
+         before logging_setup could take over. -->
+    <key>StandardOutPath</key>
+    <string>/Users/sansha/Documents/Projects/brows &amp; threading/review-management/businesses/brows-and-threading-city/logs/telegram_listener_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/sansha/Documents/Projects/brows &amp; threading/review-management/businesses/brows-and-threading-city/logs/telegram_listener_stderr.log</string>
+</dict>
+</plist>

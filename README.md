@@ -30,6 +30,12 @@ tools/
   learn_voice.py             onboarding: sample a business's pre-existing owner replies into
                               voice_sample.md, to turn into profile.md's voice section
   log_run.py                 append a run summary (see docs/OPERATIONS.md "Run history")
+  send_daily_summary.py      push a tallies+highlights summary through every configured channel
+                              (see docs/OPERATIONS.md "Interactive Telegram")
+  telegram_listen.py         persistent daemon: long-polls Telegram for escalation
+                              approve/reject/edit replies and on-demand summary requests
+  save_social_draft.py       save + broadcast a drafted social-media caption for a 5-star review
+                              (see docs/OPERATIONS.md "Social content drafts")
   check_health.py            OAuth/secrets/queue/last-run health check (see docs/OPERATIONS.md)
 
 lib/                  shared code the tools above import (no ORM, no web framework)
@@ -40,7 +46,12 @@ lib/                  shared code the tools above import (no ORM, no web framewo
   store.py             plain sqlite3 (stdlib) persistence — no ORM
   google_client.py    GoogleBusinessProfileClient interface + Mock/Live implementations (stdlib
                        urllib for HTTP — no third-party HTTP client)
-  notifier.py          escalation notifications (Telegram / Slack / console, via urllib)
+  notifier.py          outbound escalation/summary notifications (Telegram / Slack / console,
+                       via urllib) — no DB coupling
+  telegram_bot.py      inbound side: reads Telegram replies, correlates them to a review, and
+                       acts via actions.py (see docs/OPERATIONS.md "Interactive Telegram")
+  summary.py           builds the tallies+highlights summary text shared by the daily push and
+                       on-demand replies
   actions.py           shared post/reject logic used by the CLI tools
   logging_setup.py     persistent rotating log file per business (stdlib logging — see
                        docs/OPERATIONS.md "Structured logging")
@@ -59,8 +70,9 @@ businesses/<slug>/     one directory per business — fully isolated data (see "
   logs/                (gitignored) this business's own rotating log files — see
                        docs/OPERATIONS.md "Structured logging" and "Scheduling"
 
-scripts/                launchd unattended-scheduling wrapper + job definition — see
-                       docs/OPERATIONS.md "Scheduling"
+scripts/                launchd job definitions: the daily review-handler run, and the
+                       persistent Telegram listener — see docs/OPERATIONS.md "Scheduling"
+                       and "Interactive Telegram"
 
 tests/                 stdlib unittest suite, fully isolated from real businesses/ data
 ```

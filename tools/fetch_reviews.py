@@ -61,6 +61,8 @@ def main() -> None:
             raw.create_time,
             existing_reply=raw.existing_reply,
             location_id=raw.location_id,
+            profile_photo_url=raw.profile_photo_url,
+            is_anonymous=raw.is_anonymous,
         )
         if new_id is None:
             continue

@@ -74,6 +74,12 @@ Then, depending on the status you just saved:
 - **status = escalated** → immediately run `python3 tools/notify.py --review-id <id> --reason "<why this is urgent>"` to alert a human right away.
 - **status = pending_review** → no further action; it sits in the queue for a human (`python3 tools/list_pending.py` to view, `tools/approve.py` / `tools/reject.py` to act).
 
+Then, regardless of the status above: **if `rating == 5`**, compose a short, shareable social-media caption highlighting what the reviewer specifically praised, in the business's established voice (per `profile.md`) — **never include the reviewer's name or any other identifying detail**, refer to them generically (e.g. "one of our regulars", "a first-time customer"). This is draft-only content for a human to post themselves; nothing gets auto-posted anywhere. Run:
+
+```
+python3 tools/save_social_draft.py --review-id <id> --caption "<caption>"
+```
+
 ## Step 6 — Log the run and summarize
 
 Run:
@@ -84,5 +90,13 @@ python3 tools/log_run.py --fetched <N> --already-replied <M> --processed <count>
 ```
 
 using the tallies from `fetch_reviews.py`'s output and your own routing decisions this run — this keeps a durable run history (`tools/check_health.py` reports it) beyond this chat transcript.
+
+Then run:
+
+```
+python3 tools/send_daily_summary.py --highlights "<one or two sentences: anything notable this run, or that it was a quiet day>"
+```
+
+to push today's summary to whichever channels the business has configured (Telegram/Slack — no-op if none are). Write `--highlights` yourself from what you actually saw this run (a standout compliment, the reason behind any escalation, a queued item that needs a human's attention) — this is the one piece of the summary only you can write; `tools/send_daily_summary.py` fills in the tallies and current queue state on its own. If nothing stood out, say so briefly rather than omitting the flag.
 
 Then report a short summary to the user: how many were auto-posted, escalated, and queued, with a one-line reason for each escalation and each low-confidence queue item.

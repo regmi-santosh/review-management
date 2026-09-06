@@ -38,6 +38,8 @@ class RawReview:
     create_time: str
     existing_reply: Optional[str] = None  # set if Google already has an owner reply on this review
     location_id: Optional[str] = None  # which of the business's locations this came from
+    profile_photo_url: Optional[str] = None  # reviewer's Google profile photo, if not anonymous
+    is_anonymous: bool = False  # True if the reviewer posted as "A Google User"
 
 
 class GoogleBusinessProfileClient(ABC):
@@ -205,6 +207,8 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
                             create_time=item["createTime"],
                             existing_reply=item.get("reviewReply", {}).get("comment") or None,
                             location_id=location_id,
+                            profile_photo_url=item.get("reviewer", {}).get("profilePhotoUrl"),
+                            is_anonymous=item.get("reviewer", {}).get("isAnonymous", False),
                         )
                     )
                 page_token = data.get("nextPageToken")

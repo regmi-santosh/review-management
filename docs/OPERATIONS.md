@@ -81,13 +81,62 @@ rm ~/Library/LaunchAgents/com.review-management.brows-and-threading-city.plist
 
 `businesses/<slug>/logs/launchd.log` holds each scheduled run's full agent output (appended); `launchd_stdout.log`/`launchd_stderr.log` alongside it should normally stay empty — anything there means the script itself failed to start, before it could even write to its own log. See "Structured logging" below for the separate, rotated application log.
 
+## Interactive Telegram (approve/reject/edit + daily & on-demand summaries)
+
+`tools/telegram_listen.py` long-polls Telegram (`getUpdates` with a 30s timeout — event-driven, not a fixed-interval check) for replies and reports, and acts on them:
+
+- **Reply to an escalation message** with `approve` (or `yes`/`ok`, case-insensitive) → posts the draft reply as-is. `reject` (or `no`/`skip`) → dismisses the review, no reply posted. Any other text → posts *that text* as the reply instead of the draft. Correlation works via `reviews.telegram_message_id`, saved on the review when `tools/notify.py` sends the escalation — Telegram's `reply_to_message.message_id` on the incoming reply is looked up against it (`lib/store.py::get_review_by_telegram_message_id`).
+- **A reply that can't be matched** to an open escalation (already resolved by someone else, e.g. via `tools/approve.py`, or too old) gets an explicit "already handled" or "couldn't match this" reply — never silence, and never a wrong report, since the owner clearly aimed at one specific message.
+- **Any other message** (not a reply to an escalation) gets today's summary sent back — same text-building function (`lib/summary.py::build_summary_text`) used by the scheduled daily push below, so the two can't drift into inconsistent formats.
+- **Daily push**: the review-handler agent calls `tools/send_daily_summary.py --highlights "..."` at the end of every run (Step 6) — tallies from the run just logged, the current pending/escalated queue, and a highlights line the agent composes itself (a background script has no LLM judgment to write that part).
+
+All the decision logic lives in `lib/telegram_bot.py` (unit tested — see `tests/test_telegram_bot.py`); `tools/telegram_listen.py` is a thin, untested loop around it, matching this repo's convention that only `lib/` gets tests.
+
+**Install** (this is a persistent daemon — `RunAtLoad`+`KeepAlive`, not the daily job's `StartCalendarInterval`):
+
+```bash
+cp "scripts/com.review-management.brows-and-threading-city.telegram-listener.plist" ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.review-management.brows-and-threading-city.telegram-listener.plist
+```
+
+**Check it's running**: `launchctl print gui/$(id -u)/com.review-management.brows-and-threading-city.telegram-listener`
+
+**Restart after a code change**: `launchctl kickstart -k gui/$(id -u)/com.review-management.brows-and-threading-city.telegram-listener` — note the `-k`; without it, `kickstart` on an already-running `KeepAlive` job doesn't actually bounce it (unlike the daily job, where plain `kickstart` runs it now regardless).
+
+**Uninstall**:
+
+```bash
+launchctl bootout gui/$(id -u)/com.review-management.brows-and-threading-city.telegram-listener
+rm ~/Library/LaunchAgents/com.review-management.brows-and-threading-city.telegram-listener.plist
+```
+
+Routine output goes through the rotated `businesses/<slug>/logs/app.log` (see "Structured logging" below), not `print()` — a `KeepAlive` daemon's `StandardOutPath`/`StandardErrorPath` have no "normally empty" fallback the way the daily job's do, and `launchd` never rotates them.
+
+**Polling offset**: Telegram's `getUpdates` requires an ever-increasing `offset` to avoid re-delivering the same update twice — persisted in `reviews.db`'s new `meta` key/value table (`telegram_update_offset`), advanced after each individual update is handled (not per batch), so a crash mid-batch can't replay already-handled updates as new ones. The status guard above (ignore anything not still `escalated`/`pending_review`) is a second, independent safety net for the same scenario — a replayed "approve" on an already-posted review just gets an "already handled" reply, not a double post.
+
+**Safety**: only messages from the business's own stored `telegram_chat_id` (set by `tools/telegram_setup.py`) are ever acted on — everything else is logged and ignored.
+
+## Social content drafts
+
+For every 5-star review the review-handler agent processes, it also drafts a short, shareable social-media caption in the business's established voice (Step 5 of `.claude/agents/review-handler.md`) and calls `tools/save_social_draft.py --review-id <id> --caption "..."`, which:
+
+- Saves it on the review row (`reviews.draft_social_post`).
+- Pushes it through every configured notification channel (`lib/notifier.py::notify_social_draft`, the same Telegram/Slack broadcast escalations and daily summaries use).
+
+**This is draft-only** — there's no social platform integration in this repo, so nothing is ever auto-posted anywhere. A human copies the caption from Telegram (or looks it up on the review row later) and posts it themselves.
+
+**Anonymized by default**: the agent is instructed to never include the reviewer's name or any other identifying detail in the caption, referring to them generically instead (e.g. "one of our regulars"). This is a prompt-level instruction, not something code enforces — if you ever see a caption that slips this, that's worth flagging as a prompt-following miss.
+
+**Reviewer detail captured (not currently used by anything)**: `reviews.profile_photo_url` and `reviews.is_anonymous`, from Google's `reviewer.profilePhotoUrl`/`reviewer.isAnonymous` — the full extent of what Google's Business Profile API exposes about a reviewer. No email or other contact info is available through this or any other Google API; that data is never shared with the business in the first place.
+
 ## Structured logging
 
 Console output (`print()`) is lost the moment a session ends or nobody's watching stdout — the interactive experience still prints as before, but the things that matter durably now also go through `lib/logging_setup.py` into a rotating file per business: `businesses/<slug>/logs/app.log` (5MB per file, 5 backups kept, stdlib `logging.handlers.RotatingFileHandler` — no new dependency).
 
 What's logged there today:
 - `lib/actions.py` — every successful post (`posted reply for review N`) and every rejection, plus the full exception (not just a message) if posting fails.
-- `lib/notifier.py` — every escalation trigger, whether it reached Slack, and — at `WARNING` level, since this is the case that matters most — when an escalation reached **no channel at all** and only got printed to a console nobody may be watching.
+- `lib/notifier.py` — every escalation/daily-summary send attempt, which channel(s) it reached, and — at `WARNING` level, since this is the case that matters most — when a message reached **no channel at all** and only got printed to a console nobody may be watching.
+- `lib/telegram_bot.py` / `tools/telegram_listen.py` — every incoming message handled (or ignored, e.g. wrong chat id) and any failure acting on a review from a reply.
 - `lib/google_client.py` — how many reviews a live fetch pulled, every live post, and mock-mode "would post" events.
 - `tools/fetch_reviews.py` — a one-line summary of every fetch (fetched/already-replied/actionable counts), and a `WARNING` when the batch-size guardrail trips.
 
