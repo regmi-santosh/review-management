@@ -2,6 +2,7 @@
 """Health check for one business: verifies its Google OAuth credentials
 still actually work (catches Testing-mode's 7-day refresh token expiry
 before it silently breaks fetch/post), checks secrets-file permissions,
+confirms an escalation channel (Telegram/Slack) is actually configured,
 and reports the review queue and last run.
 
 Exit code: 0 if everything's OK, 1 if there are warnings, 2 if anything failed.
@@ -20,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lib import config, store
+from lib import config, notifier, store
 from lib.cli import add_business_arg, apply_business_arg
 
 OK, WARN, FAIL = "OK", "WARN", "FAIL"
@@ -69,6 +70,17 @@ def check_oauth(business: config.Business) -> tuple:
         return WARN, f"could not reach Google to verify (network issue?): {exc}"
 
 
+def check_escalation_channel(business: config.Business) -> tuple:
+    configured = notifier.get_configured_notifiers(business)
+    if not configured:
+        return WARN, (
+            "no notification channel configured - escalations only print to console, which "
+            "nobody sees in an unattended/scheduled run. See docs/API_SETUP.md 'Escalation alerts'."
+        )
+    channels = ", ".join(type(n).__name__.replace("Notifier", "") for n in configured)
+    return OK, f"configured: {channels}"
+
+
 def check_queue(conn) -> tuple:
     rows = store.list_reviews(conn)
     pending = [r for r in rows if r["status"] in ("pending_review", "escalated")]
@@ -110,6 +122,7 @@ def main() -> None:
     checks = [
         ("Secrets file permissions", check_secrets_permissions(business)),
         ("Google OAuth", check_oauth(business)),
+        ("Escalation channel", check_escalation_channel(business)),
         ("Review queue", check_queue(conn)),
         ("Last run", check_last_run(conn)),
     ]

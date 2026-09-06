@@ -9,7 +9,8 @@ Two layers of config:
     specific to one business — structured facts (name, Google location IDs),
     that business's own Google OAuth credentials (a second client's listing
     is normally owned by a completely different Google account, so these
-    can't be shared globally), and optional per-business overrides
+    can't be shared globally), escalation notification credentials
+    (Telegram bot token/chat id), and optional per-business overrides
     (confidence_threshold, slack_webhook_url). Falls back to the top-level
     .env when a business doesn't set its own.
 
@@ -125,6 +126,14 @@ class Business:
     @property
     def slack_webhook_url(self) -> str:
         return self.facts.get("slack_webhook_url") or _global_get("SLACK_WEBHOOK_URL", "")
+
+    @property
+    def telegram_bot_token(self) -> str:
+        return self._secret("TELEGRAM_BOT_TOKEN")
+
+    @property
+    def telegram_chat_id(self) -> str:
+        return self._secret("TELEGRAM_CHAT_ID")
 
     def save_secret(self, key: str, value: str) -> None:
         """Set or replace KEY=value in this business's own .env file."""
