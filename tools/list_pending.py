@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """List reviews awaiting a human decision (pending_review or escalated).
 
-Usage: python3 tools/list_pending.py
+Usage: python3 tools/list_pending.py [--business <slug>]
 """
+import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib import store
+from lib.cli import add_business_arg, apply_business_arg
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    add_business_arg(parser)
+    args = parser.parse_args()
+    apply_business_arg(args)
+
     conn = store.connect()
     reviews = store.list_reviews(conn)
     pending = [r for r in reviews if r["status"] in ("pending_review", "escalated")]

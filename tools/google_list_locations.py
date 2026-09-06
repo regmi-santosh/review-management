@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""After running google_oauth_setup.py and filling GOOGLE_OAUTH_* into .env,
-run this to list the Google Business accounts and locations visible to that
-account, so you can fill google_account_id / google_location_id into
-businesses/<slug>/business.json.
+"""After running google_oauth_setup.py, run this to list the Google Business
+accounts and locations visible to that business's authorized account, so you
+can fill google_account_id / google_location_id into businesses/<slug>/business.json.
 
 Note: Google's Business Profile APIs have shifted across a few service
 names over the years. If these endpoints 404 for you, check
 https://developers.google.com/my-business/reference/rest for whichever
 ones your approved API access actually covers.
 
-Usage: python3 tools/google_list_locations.py
+Usage: python3 tools/google_list_locations.py [--business <slug>]
 """
+import argparse
 import json
 import sys
 import urllib.error
@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib import config
+from lib.cli import add_business_arg, apply_business_arg
 
 ACCOUNTS_URL = "https://mybusinessaccountmanagement.googleapis.com/v1/accounts"
 LOCATIONS_URL_TMPL = (
@@ -29,12 +30,12 @@ LOCATIONS_URL_TMPL = (
 )
 
 
-def _access_token() -> str:
+def _access_token(business) -> str:
     data = urllib.parse.urlencode(
         {
-            "client_id": config.GOOGLE_OAUTH_CLIENT_ID,
-            "client_secret": config.GOOGLE_OAUTH_CLIENT_SECRET,
-            "refresh_token": config.GOOGLE_OAUTH_REFRESH_TOKEN,
+            "client_id": business.google_oauth_client_id,
+            "client_secret": business.google_oauth_client_secret,
+            "refresh_token": business.google_oauth_refresh_token,
             "grant_type": "refresh_token",
         }
     ).encode()
@@ -58,24 +59,30 @@ def _get(url: str, token: str) -> dict:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    add_business_arg(parser)
+    args = parser.parse_args()
+    apply_business_arg(args)
+
+    business = config.active()
     missing = [
         name
         for name, value in [
-            ("GOOGLE_OAUTH_CLIENT_ID", config.GOOGLE_OAUTH_CLIENT_ID),
-            ("GOOGLE_OAUTH_CLIENT_SECRET", config.GOOGLE_OAUTH_CLIENT_SECRET),
-            ("GOOGLE_OAUTH_REFRESH_TOKEN", config.GOOGLE_OAUTH_REFRESH_TOKEN),
+            ("GOOGLE_OAUTH_CLIENT_ID", business.google_oauth_client_id),
+            ("GOOGLE_OAUTH_CLIENT_SECRET", business.google_oauth_client_secret),
+            ("GOOGLE_OAUTH_REFRESH_TOKEN", business.google_oauth_refresh_token),
         ]
         if not value
     ]
     if missing:
         print(
-            f"error: missing in .env: {', '.join(missing)} "
-            "(run tools/google_oauth_setup.py first)",
+            f"error: missing for business '{business.slug}': {', '.join(missing)} "
+            f"(run tools/google_oauth_setup.py --business {business.slug} first)",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    token = _access_token()
+    token = _access_token(business)
     accounts = _get(ACCOUNTS_URL, token).get("accounts", [])
     if not accounts:
         print("No accounts visible to this Google login.")
@@ -93,7 +100,7 @@ def main() -> None:
 
     print(
         "Put the numeric IDs (the part after the last '/') into "
-        f"businesses/{config.BUSINESS_SLUG}/business.json as "
+        f"businesses/{business.slug}/business.json as "
         '"google_account_id" and "google_location_id".'
     )
 

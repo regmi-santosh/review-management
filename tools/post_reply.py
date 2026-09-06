@@ -18,15 +18,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib import store
 from lib.actions import post_review_reply
+from lib.cli import add_business_arg, apply_business_arg
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    add_business_arg(parser)
     parser.add_argument("--review-id", type=int, required=True)
     parser.add_argument(
         "--text", default=None, help="Override text to post instead of draft_reply."
     )
     args = parser.parse_args()
+    apply_business_arg(args)
 
     conn = store.connect()
     try:

@@ -49,29 +49,26 @@ Google has reorganized this into tabs (Overview / **Branding** / **Audience** / 
 
 Desktop app, not Web application — this matters. `tools/google_oauth_setup.py` runs entirely on your machine: it opens your browser and catches the redirect on `http://localhost:<port>` via a throwaway local HTTP server. There's no domain, no backend, and no way to keep the client secret confidential from whoever runs the script — that's exactly the "installed app" pattern ([RFC 8252](https://developers.google.com/identity/protocols/oauth2/native-app)) Desktop app credentials exist for. Google allows any loopback port for this client type without pre-registering it; a Web application client would instead force you to pre-register an exact redirect URI and fight assumptions (domain verification, stricter consent requirements) that don't fit a local script. The client type only affects this authorization step — it has no bearing on the actual API calls made afterward.
 
-Note the Client ID and Client Secret, and put them in `.env`:
+Note the Client ID and Client Secret — you'll pass them to the script in the next step (or put them directly in `businesses/<slug>/.env` first, same `KEY=value` format as the top-level `.env`).
 
-```
-GOOGLE_OAUTH_CLIENT_ID=...
-GOOGLE_OAUTH_CLIENT_SECRET=...
-```
+**Important for more than one business**: these credentials are scoped to whichever `--business <slug>` you run the next two steps with. A second business's listing is normally owned by a completely different Google account, so its credentials go in *its own* `businesses/<other-slug>/.env`, never the shared top-level one.
 
 ## Step 4 — Get a refresh token
 
 ```bash
-python3 tools/google_oauth_setup.py
+python3 tools/google_oauth_setup.py --business <slug> --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
 ```
 
-(Reads the client ID/secret from `.env` automatically; pass `--client-id`/`--client-secret` instead if you'd rather not put them in `.env` first.)
+(`--business` defaults to `BUSINESS_SLUG`/the only business directory if omitted; `--client-id`/`--client-secret` default to whatever's already in that business's `.env` if omitted.)
 
-This opens your browser, has you sign in as the test-user account from Step 2, and **writes `GOOGLE_OAUTH_REFRESH_TOKEN` straight into `.env`** — nothing to copy-paste.
+This opens your browser, has you sign in as the test-user account from Step 2, and **writes the credentials straight into `businesses/<slug>/.env`** — nothing to copy-paste.
 
 If you get `Error 403: access_denied`, you missed the Audience → Test users step above.
 
 ## Step 5 — Find your account ID and location ID
 
 ```bash
-python3 tools/google_list_locations.py
+python3 tools/google_list_locations.py --business <slug>
 ```
 
 Lists every account and location visible to that Google login, e.g.:
@@ -92,7 +89,7 @@ Put the numeric IDs into `businesses/<slug>/business.json`:
 
 ## Step 6 — Go live
 
-Set `GOOGLE_CLIENT_MODE=live` in `.env`. `tools/fetch_reviews.py` and `tools/post_reply.py` now hit the real API — no other code changes needed.
+Set `"google_client_mode": "live"` in `businesses/<slug>/business.json` (or `GOOGLE_CLIENT_MODE=live` in the top-level `.env` if this is the only/default business). `tools/fetch_reviews.py` and `tools/post_reply.py` now hit the real API for that business — no other code changes needed.
 
 **What we learned doing this for real, encoded as safety features in `lib/google_client.py` and `lib/store.py` — don't remove these if you're touching that code:**
 
@@ -107,10 +104,6 @@ Without this, escalations just print to the console. To get a real alert instead
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**.
 2. Pick your workspace, then under **Incoming Webhooks**, toggle it on and **Add New Webhook to Workspace**, choosing the channel to post to.
-3. Copy the webhook URL into `.env`:
-
-```
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-```
+3. Copy the webhook URL into `.env` (`SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...`) for a global default, or into a specific business's `business.json` as `"slack_webhook_url": "..."` if that business's escalations should go to a different Slack workspace/channel than the default.
 
 `lib/notifier.py` posts there instead of logging to console the next time a review is escalated.

@@ -12,14 +12,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib import store
+from lib.cli import add_business_arg, apply_business_arg
 from lib.notifier import notify_escalation
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    add_business_arg(parser)
     parser.add_argument("--review-id", type=int, required=True)
     parser.add_argument("--reason", required=True)
     args = parser.parse_args()
+    apply_business_arg(args)
 
     conn = store.connect()
     review = store.get_review(conn, args.review_id)

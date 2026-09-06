@@ -3,10 +3,9 @@ functions directly; rows are plain dicts.
 """
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
-DB_PATH = Path(__file__).resolve().parent.parent / "review_management.db"
+from lib import config
 
 VALID_STATUSES = {"new", "pending_review", "escalated", "posted", "rejected"}
 VALID_CATEGORIES = {"compliment", "complaint", "question", "spam", "other"}
@@ -36,7 +35,10 @@ CREATE TABLE IF NOT EXISTS reviews (
 
 
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    """Connect to the active business's own DB (config.active().db_path),
+    resolved fresh on every call so a tool's --business flag (applied before
+    this is called) takes effect."""
+    conn = sqlite3.connect(config.active().db_path)
     conn.row_factory = sqlite3.Row
     conn.execute(SCHEMA)
     conn.commit()

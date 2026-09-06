@@ -9,7 +9,7 @@ An agentic system that reads Google reviews for a business and handles them:
    - **High confidence** (`confidence >= CONFIDENCE_THRESHOLD`, default `0.85`) and not highly negative → **auto-post** the reply.
    - **Otherwise** → queue the draft for **human approval**.
 
-The system itself is generic — it isn't written for any one business. The classification/drafting/routing logic in [.claude/agents/review-handler.md](.claude/agents/review-handler.md) is business-agnostic; a specific business is just a config directory under `businesses/`. The first one set up is [businesses/brows-and-threading-city](businesses/brows-and-threading-city) ([Google Maps listing](https://www.google.com/maps/place/Brows+%26+Threading+City/@41.2887591,-96.0845815,17z)), used here as a concrete example/demo — see "Adding another business" below to point this at a different one.
+The system itself is generic — it isn't written for any one business. The classification/drafting/routing logic in [.claude/agents/review-handler.md](.claude/agents/review-handler.md) is business-agnostic; a specific business is just a config directory under `businesses/`, with its own data, DB, and Google credentials — completely isolated from any other business the same install manages. The first one set up is [businesses/brows-and-threading-city](businesses/brows-and-threading-city) ([Google Maps listing](https://www.google.com/maps/place/Brows+%26+Threading+City/@41.2887591,-96.0845815,17z)), used here as a concrete example/demo — see "Adding another business" below to point this at a different one, or to run several at once via `--business`.
 
 ## Architecture: harness-native, not a Python service
 
@@ -28,18 +28,26 @@ tools/
   google_list_locations.py   one-time: discover your Google account/location IDs
 
 lib/                  shared code the tools above import (no ORM, no web framework)
-  config.py           loads .env + the active business's business.json — service credentials
-                       only (Slack webhook, Google OAuth). No LLM key: nothing here calls a model API.
+  config.py           resolves the active business into a Business object (lib/config.py's
+                       Business class) — see "Adding another business" below. No LLM key
+                       anywhere: nothing here calls a model API.
+  cli.py               shared --business flag handling for tool scripts
   store.py             plain sqlite3 (stdlib) persistence — no ORM
   google_client.py    GoogleBusinessProfileClient interface + Mock/Live implementations (stdlib
                        urllib for HTTP — no third-party HTTP client)
   notifier.py          escalation notifications (console / Slack, via urllib)
   actions.py           shared post/reject logic used by the CLI tools
 
-businesses/<slug>/     one directory per business (see "Adding another business")
-  business.json        structured facts: name, Maps URL, Google account/location IDs
+businesses/<slug>/     one directory per business — fully isolated data (see "Adding another business")
+  business.json        structured facts: name, Maps URL, Google account/location IDs, and
+                       optional per-business overrides (confidence_threshold, slack_webhook_url,
+                       google_client_mode)
+  .env                 (gitignored) this business's own Google OAuth credentials — never shared
+                       across businesses, since each listing is normally owned by a different
+                       Google account
   profile.md           free-text voice/context the agent reads directly (Step 0 of the agent)
-  seed_reviews.json    mock review data used while GOOGLE_CLIENT_MODE=mock
+  seed_reviews.json    mock review data used while in mock mode
+  reviews.db           (gitignored) this business's own SQLite DB — created automatically
 ```
 
 **Dependencies: none.** Everything is Python 3 standard library (`sqlite3`, `urllib`, `argparse`, `json`, `dataclasses`, `http.server`, `webbrowser`). There's no `requirements.txt`, no virtualenv to set up, no `pip install` step — just `python3 tools/<script>.py`.
@@ -52,7 +60,15 @@ There's no scheduler wired up yet, by design, while we're on mock data. To proce
 
 It will read the active business's profile, run `tools/fetch_reviews.py`, classify/draft/route each new review itself, and call the appropriate tool script(s) directly. Once this is validated end-to-end, wiring it to a real schedule is a later addition (e.g. the `schedule` skill) — no changes needed to the agent or tools.
 
+To run it for a specific business (when more than one is configured):
+
+> run the review-handler agent for &lt;slug&gt;
+
+which has it pass `--business <slug>` to every `tools/*.py` call for that run instead of relying on `BUSINESS_SLUG` in `.env`.
+
 ## Adding another business
+
+Each business is fully isolated — its own DB (`reviews.db`), its own Google OAuth credentials (`.env`), its own mock data. Nothing here requires touching an existing business's files.
 
 1. Create `businesses/<new-slug>/`.
 2. Add `business.json`:
@@ -65,9 +81,11 @@ It will read the active business's profile, run `tools/fetch_reviews.py`, classi
      "google_location_id": ""
    }
    ```
+   Optional per-business overrides (fall back to the top-level `.env` / defaults when omitted): `"confidence_threshold": 0.9`, `"slack_webhook_url": "..."`, `"google_client_mode": "mock"`.
 3. Add `profile.md` — reply voice, signature, any business-specific escalation notes (see the example in `businesses/brows-and-threading-city/profile.md`).
 4. For demo/dev purposes, add a `seed_reviews.json` with a few sample reviews in the same shape as the existing one.
-5. Set `BUSINESS_SLUG=<new-slug>` in `.env` (or just don't set it if this is the only business directory — it's picked automatically).
+5. Once you have Google API access for this business, run `python3 tools/google_oauth_setup.py --business <new-slug>` and `python3 tools/google_list_locations.py --business <new-slug>` — this writes credentials into `businesses/<new-slug>/.env`, never the shared top-level one (see docs/API_SETUP.md).
+6. Either set `BUSINESS_SLUG=<new-slug>` in the top-level `.env` to make it the default, or just pass `--business <new-slug>` to every `tools/*.py` call (and tell the agent which business you mean when invoking it) to run it alongside other businesses without changing any defaults.
 
 Nothing else changes: the same agent definition, tools, and DB schema work for any business.
 
@@ -98,16 +116,20 @@ python3 tools/approve.py --review-id 3 --edit "edited reply text"
 python3 tools/reject.py --review-id 5
 ```
 
-## Configuration (`.env`)
+## Configuration
+
+Top-level `.env` holds cross-cutting defaults, overridable per business:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `BUSINESS_SLUG` | the only dir under `businesses/`, if there's exactly one | Which `businesses/<slug>/` to use. |
-| `CONFIDENCE_THRESHOLD` | `0.85` | Minimum confidence for the agent to auto-post a reply. |
-| `GOOGLE_CLIENT_MODE` | `mock` | `mock` or `live`. |
-| `SLACK_WEBHOOK_URL` | — | Optional. If set, escalations post here instead of just logging. |
-| `GOOGLE_OAUTH_*` | — | Only needed once `GOOGLE_CLIENT_MODE=live`. See docs/API_SETUP.md. |
+| `BUSINESS_SLUG` | the only dir under `businesses/`, if there's exactly one | Which `businesses/<slug>/` is active when a tool isn't given `--business`. |
+| `CONFIDENCE_THRESHOLD` | `0.85` | Minimum confidence to auto-post — unless a business sets its own `confidence_threshold` in `business.json`. |
+| `GOOGLE_CLIENT_MODE` | `mock` | `mock` or `live` — unless a business sets its own `google_client_mode` in `business.json`. |
+| `SLACK_WEBHOOK_URL` | — | Escalation alerts destination — unless a business sets its own `slack_webhook_url` in `business.json`. |
 
-Business name, Maps URL, and Google account/location IDs live in `businesses/<slug>/business.json`, not `.env` — see "Adding another business".
+Everything specific to one business lives under `businesses/<slug>/`, never the top-level `.env`:
+- `business.json` — name, Maps URL, Google account/location IDs, and any of the overrides above.
+- `.env` (gitignored) — that business's own `GOOGLE_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN`. See docs/API_SETUP.md.
+- `reviews.db` (gitignored) — that business's own SQLite DB, created automatically on first run.
 
-The local DB is a single file, `review_management.db` (sqlite3, created automatically on first run, gitignored).
+Every `tools/*.py` script accepts `--business <slug>` to operate on a specific business regardless of `BUSINESS_SLUG`.
