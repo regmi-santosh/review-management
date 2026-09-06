@@ -87,6 +87,8 @@ Put the numeric IDs into `businesses/<slug>/business.json`:
 }
 ```
 
+If the tool lists more than one location for this account (a business with several physical locations), use `"google_location_ids": ["...", "..."]` instead of the singular field — every review gets tagged with which location it came from, and replies route back to the matching one.
+
 ## Step 6 — Go live
 
 Set `"google_client_mode": "live"` in `businesses/<slug>/business.json` (or `GOOGLE_CLIENT_MODE=live` in the top-level `.env` if this is the only/default business). `tools/fetch_reviews.py` and `tools/post_reply.py` now hit the real API for that business — no other code changes needed.

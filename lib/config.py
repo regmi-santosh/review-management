@@ -95,7 +95,19 @@ class Business:
         self.name = self.facts.get("name", slug)
         self.maps_url = self.facts.get("maps_url", "")
         self.google_account_id = self.facts.get("google_account_id", "")
+        # Single-location businesses use google_location_id (a string); a
+        # business with multiple physical locations under one account uses
+        # google_location_ids (a list) instead. google_location_ids always
+        # gives the uniform list view; google_location_id stays around for
+        # backward compatibility (the first configured location, or "").
         self.google_location_id = self.facts.get("google_location_id", "")
+
+    @property
+    def google_location_ids(self) -> list:
+        ids = self.facts.get("google_location_ids")
+        if ids:
+            return list(ids)
+        return [self.google_location_id] if self.google_location_id else []
 
     def _secret(self, key: str) -> str:
         # Business's own .env wins; falls back to the top-level .env / process env.

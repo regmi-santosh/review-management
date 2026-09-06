@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     draft_reply TEXT,
     posted_reply TEXT,
     reply_source TEXT,
+    location_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -67,6 +68,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
         )
         conn.commit()
 
+    if "location_id" not in columns:
+        conn.execute("ALTER TABLE reviews ADD COLUMN location_id TEXT")
+        # Backfill: any row predating multi-location support was necessarily
+        # fetched from a single-location setup. Only safe to infer when the
+        # business has exactly one location configured now - if it already
+        # has several, there's no way to know which one old rows came from,
+        # so they're left NULL (post_reply.py will raise a clear error if
+        # one of those is ever posted to, rather than silently guessing).
+        location_ids = config.active().google_location_ids
+        if len(location_ids) == 1:
+            conn.execute(
+                "UPDATE reviews SET location_id = ? WHERE location_id IS NULL", (location_ids[0],)
+            )
+        conn.commit()
+
 
 def connect() -> sqlite3.Connection:
     """Connect to the active business's own DB (config.active().db_path),
@@ -92,6 +108,7 @@ def insert_review(
     text: str,
     create_time: str,
     existing_reply: Optional[str] = None,
+    location_id: Optional[str] = None,
 ) -> Optional[int]:
     """Insert a new review if external_id isn't already known.
 
@@ -99,6 +116,10 @@ def insert_review(
     review — e.g. posted manually, before this system existed), it's
     recorded as already `posted` so the agent never processes it and never
     overwrites that existing reply via the API.
+
+    `location_id` identifies which of the business's locations this review
+    came from (see lib.config.Business.google_location_ids) - required to
+    post a reply to a multi-location business's review later.
 
     Returns the new row id, or None if it already existed.
     """
@@ -113,9 +134,9 @@ def insert_review(
     reply_source = "owner" if existing_reply else None
     cur = conn.execute(
         "INSERT INTO reviews "
-        "(external_id, author_name, rating, text, create_time, status, posted_reply, reply_source, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (external_id, author_name, rating, text, create_time, status, existing_reply, reply_source, ts, ts),
+        "(external_id, author_name, rating, text, create_time, status, posted_reply, reply_source, location_id, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (external_id, author_name, rating, text, create_time, status, existing_reply, reply_source, location_id, ts, ts),
     )
     conn.commit()
     return cur.lastrowid

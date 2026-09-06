@@ -107,6 +107,47 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(owner_row["reply_source"], "owner")
             self.assertEqual(agent_row["reply_source"], "agent")
 
+    def _make_pre_location_id_db(self, business):
+        conn = sqlite3.connect(business.db_path)
+        conn.execute(
+            """
+            CREATE TABLE reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                external_id TEXT UNIQUE NOT NULL,
+                author_name TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                create_time TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'new',
+                category TEXT, sentiment TEXT, urgency TEXT, confidence REAL,
+                reasoning TEXT, draft_reply TEXT, posted_reply TEXT, reply_source TEXT,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO reviews (external_id, author_name, rating, text, create_time, "
+            "status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+            ("old-1", "A", 5, "x", "2026-01-01T00:00:00Z", "new", "ts", "ts"),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_backfills_location_id_when_exactly_one_location_configured(self):
+        with temp_business(business_facts={"google_location_id": "loc-1"}) as business:
+            self._make_pre_location_id_db(business)
+            conn = store.connect()
+            row = conn.execute("SELECT * FROM reviews WHERE external_id = 'old-1'").fetchone()
+            self.assertEqual(row["location_id"], "loc-1")
+
+    def test_does_not_guess_location_id_when_multiple_locations_configured(self):
+        facts = {"google_location_ids": ["loc-1", "loc-2"]}
+        with temp_business(business_facts=facts) as business:
+            self._make_pre_location_id_db(business)
+            conn = store.connect()
+            row = conn.execute("SELECT * FROM reviews WHERE external_id = 'old-1'").fetchone()
+            self.assertIsNone(row["location_id"])
+
 
 class RunLogTests(unittest.TestCase):
     def test_log_run_and_last_run(self):
