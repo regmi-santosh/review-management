@@ -25,6 +25,7 @@ tools/
   approve.py                 human helper: post a queued/escalated draft (optionally edited)
   reject.py                  human helper: dismiss a queued review with no reply
   google_oauth_setup.py      one-time: obtain a Google OAuth refresh token (see docs/API_SETUP.md)
+  telegram_setup.py          one-time: connect a Telegram bot for escalation alerts (see docs/API_SETUP.md)
   google_list_locations.py   one-time: discover your Google account/location IDs
   learn_voice.py             onboarding: sample a business's pre-existing owner replies into
                               voice_sample.md, to turn into profile.md's voice section
@@ -90,6 +91,8 @@ Each business is fully isolated — its own DB (`reviews.db`), its own Google OA
      "google_location_id": ""
    }
    ```
+   For a business with multiple physical locations under one account, use `"google_location_ids": ["...", "..."]` instead of the singular `google_location_id` — every review gets tagged with which location it came from, and replies get posted back to the matching one.
+
    Optional per-business overrides (fall back to the top-level `.env` / defaults when omitted): `"confidence_threshold": 0.9`, `"slack_webhook_url": "..."`, `"google_client_mode": "mock"`.
 3. Add `profile.md` — reply voice, signature, any business-specific escalation notes (see the example in `businesses/brows-and-threading-city/profile.md`).
 4. For demo/dev purposes, add a `seed_reviews.json` with a few sample reviews in the same shape as the existing one.
@@ -105,7 +108,7 @@ Reading/replying to reviews on Google Maps is only officially possible through t
 
 **Until it is**, everything runs against `lib/google_client.py::MockGoogleBusinessProfileClient`, seeded from each business's `seed_reviews.json`, so the full classify → draft → route pipeline can be exercised end-to-end today.
 
-**For the full walkthrough of getting live API access and generating the OAuth keys, see [docs/API_SETUP.md](docs/API_SETUP.md)** (also covers the optional Slack webhook for escalation alerts). Short version: verify the listing → create a Google Cloud OAuth client → request Business Profile API access (manual review, days-to-weeks) → run `tools/google_oauth_setup.py` for a refresh token → run `tools/google_list_locations.py` to find your IDs → set `GOOGLE_CLIENT_MODE=live`.
+**For the full walkthrough of getting live API access and generating the OAuth keys, see [docs/API_SETUP.md](docs/API_SETUP.md)** (also covers escalation alerts via Telegram or Slack). Short version: verify the listing → create a Google Cloud OAuth client → request Business Profile API access (manual review, days-to-weeks) → run `tools/google_oauth_setup.py` for a refresh token → run `tools/google_list_locations.py` to find your IDs → set `GOOGLE_CLIENT_MODE=live`.
 
 ## Setup
 
@@ -139,8 +142,10 @@ Top-level `.env` holds cross-cutting defaults, overridable per business:
 
 Everything specific to one business lives under `businesses/<slug>/`, never the top-level `.env`:
 - `business.json` — name, Maps URL, Google account/location IDs, and any of the overrides above.
-- `.env` (gitignored) — that business's own `GOOGLE_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN`. See docs/API_SETUP.md.
+- `.env` (gitignored) — that business's own `GOOGLE_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN`, and `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` if using Telegram for escalation alerts. See docs/API_SETUP.md.
 - `reviews.db` (gitignored) — that business's own SQLite DB, created automatically on first run.
+
+Escalation alerts (`lib/notifier.py`) use a plug-and-play connector interface — each channel (`TelegramNotifier`, `SlackNotifier`) implements the same `send(message)` interface, mirroring `lib/google_client.py`'s Mock/Live pattern. Every channel a business has credentials for gets used, not just the first found; adding a new channel (email, Discord, SMS, ...) means writing one class and registering it, nothing else in the codebase needs to change.
 
 Every `tools/*.py` script accepts `--business <slug>` to operate on a specific business regardless of `BUSINESS_SLUG`.
 

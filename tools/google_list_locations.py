@@ -88,6 +88,7 @@ def main() -> None:
         print("No accounts visible to this Google login.")
         return
 
+    total_locations = 0
     for account in accounts:
         account_name = account["name"]  # e.g. "accounts/123456"
         print(f"Account: {account_name}  ({account.get('accountName', '')})")
@@ -96,13 +97,18 @@ def main() -> None:
         ).get("locations", [])
         for loc in locations:
             print(f"  Location: {loc['name']}  ({loc.get('title', '')})")
+        total_locations += len(locations)
         print()
 
-    print(
-        "Put the numeric IDs (the part after the last '/') into "
-        f"businesses/{business.slug}/business.json as "
-        '"google_account_id" and "google_location_id".'
-    )
+    print(f"Put the numeric account ID into businesses/{business.slug}/business.json as \"google_account_id\".")
+    if total_locations > 1:
+        print(
+            'This business has multiple locations - put all their numeric IDs into '
+            '"google_location_ids" as a list, e.g. ["111...", "222..."], instead of '
+            '"google_location_id".'
+        )
+    else:
+        print('Put its numeric location ID in as "google_location_id".')
 
 
 if __name__ == "__main__":

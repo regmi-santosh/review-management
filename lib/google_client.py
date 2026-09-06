@@ -37,6 +37,7 @@ class RawReview:
     text: str
     create_time: str
     existing_reply: Optional[str] = None  # set if Google already has an owner reply on this review
+    location_id: Optional[str] = None  # which of the business's locations this came from
 
 
 class GoogleBusinessProfileClient(ABC):
@@ -48,7 +49,7 @@ class GoogleBusinessProfileClient(ABC):
         ...
 
     @abstractmethod
-    def post_reply(self, external_id: str, reply_text: str) -> None:
+    def post_reply(self, external_id: str, location_id: Optional[str], reply_text: str) -> None:
         ...
 
 
@@ -94,7 +95,11 @@ def _request(method: str, url: str, headers: Optional[dict] = None, json_body: O
 
 
 class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
-    """Real Google Business Profile API client.
+    """Real Google Business Profile API client. Supports one or many
+    locations under the same account (business.json's google_location_id
+    for one, google_location_ids for several) - fetch_reviews() pulls from
+    every configured location and tags each review with which one it came
+    from, since posting a reply requires knowing the specific location.
 
     Not usable until:
       1. The business's listing is verified in Business Profile Manager, and
@@ -128,7 +133,7 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
             name
             for name, value in [
                 ("google_account_id", business.google_account_id),
-                ("google_location_id", business.google_location_id),
+                ("google_location_id(s)", "yes" if business.google_location_ids else ""),
             ]
             if not value
         ]
@@ -144,7 +149,7 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
                 + ". See docs/API_SETUP.md."
             )
         self._account_id = business.google_account_id
-        self._location_id = business.google_location_id
+        self._location_ids = business.google_location_ids
         self._client_id = business.google_oauth_client_id
         self._client_secret = business.google_oauth_client_secret
         self._refresh_token = business.google_oauth_refresh_token
@@ -182,22 +187,25 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
         return {"Authorization": f"Bearer {self._access_token()}"}
 
     def fetch_reviews(self) -> List[RawReview]:
-        base_url = f"{self.BASE_URL}/accounts/{self._account_id}/locations/{self._location_id}/reviews"
         headers = self._headers()
         reviews = []
-        page_token = None
-        while True:
-            url = f"{base_url}?pageToken={page_token}" if page_token else base_url
-            data = _request("GET", url, headers=headers)
-            for item in data.get("reviews", []):
-                reviews.append(
-                    RawReview(
-                        external_id=item["reviewId"],
-                        author_name=item.get("reviewer", {}).get("displayName", "Anonymous"),
-                        rating=self.RATING_MAP.get(item.get("starRating", "FIVE"), 5),
-                        text=item.get("comment", ""),
-                        create_time=item["createTime"],
-                        existing_reply=item.get("reviewReply", {}).get("comment") or None,
+        for location_id in self._location_ids:
+            base_url = f"{self.BASE_URL}/accounts/{self._account_id}/locations/{location_id}/reviews"
+            page_token = None
+            while True:
+                url = f"{base_url}?pageToken={page_token}" if page_token else base_url
+                data = _request("GET", url, headers=headers)
+                for item in data.get("reviews", []):
+                    reviews.append(
+                        RawReview(
+                            external_id=item["reviewId"],
+                            author_name=item.get("reviewer", {}).get("displayName", "Anonymous"),
+                            rating=self.RATING_MAP.get(item.get("starRating", "FIVE"), 5),
+                            text=item.get("comment", ""),
+                            create_time=item["createTime"],
+                            existing_reply=item.get("reviewReply", {}).get("comment") or None,
+                            location_id=location_id,
+                        )
                     )
                 )
             page_token = data.get("nextPageToken")
@@ -206,11 +214,14 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
         get_logger("google_client").info(f"fetched {len(reviews)} reviews from Google (account={self._account_id})")
         return reviews
 
-    def post_reply(self, external_id: str, reply_text: str) -> None:
-        url = (
-            f"{self.BASE_URL}/accounts/{self._account_id}/locations/{self._location_id}"
-            f"/reviews/{external_id}/reply"
-        )
+    def post_reply(self, external_id: str, location_id: Optional[str], reply_text: str) -> None:
+        if not location_id:
+            raise ValueError(
+                f"review {external_id} has no location_id recorded - can't post a reply without "
+                "knowing which location it belongs to (this shouldn't happen for reviews fetched "
+                "after multi-location support was added; check the DB migration)."
+            )
+        url = f"{self.BASE_URL}/accounts/{self._account_id}/locations/{location_id}/reviews/{external_id}/reply"
         _request("PUT", url, headers=self._headers(), json_body={"comment": reply_text})
         get_logger("google_client").info(f"posted reply to Google for review {external_id}")
 
