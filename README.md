@@ -28,6 +28,8 @@ tools/
   google_list_locations.py   one-time: discover your Google account/location IDs
   learn_voice.py             onboarding: sample a business's pre-existing owner replies into
                               voice_sample.md, to turn into profile.md's voice section
+  log_run.py                 append a run summary (see docs/OPERATIONS.md "Run history")
+  check_health.py            OAuth/secrets/queue/last-run health check (see docs/OPERATIONS.md)
 
 lib/                  shared code the tools above import (no ORM, no web framework)
   config.py           resolves the active business into a Business object (lib/config.py's
@@ -49,7 +51,10 @@ businesses/<slug>/     one directory per business — fully isolated data (see "
                        Google account
   profile.md           free-text voice/context the agent reads directly (Step 0 of the agent)
   seed_reviews.json    mock review data used while in mock mode
-  reviews.db           (gitignored) this business's own SQLite DB — created automatically
+  reviews.db           (gitignored) this business's own SQLite DB — created automatically,
+                       includes a `runs` table logging every review-handler run
+
+tests/                 stdlib unittest suite, fully isolated from real businesses/ data
 ```
 
 **Dependencies: none.** Everything is Python 3 standard library (`sqlite3`, `urllib`, `argparse`, `json`, `dataclasses`, `http.server`, `webbrowser`). There's no `requirements.txt`, no virtualenv to set up, no `pip install` step — just `python3 tools/<script>.py`.
@@ -136,3 +141,12 @@ Everything specific to one business lives under `businesses/<slug>/`, never the 
 - `reviews.db` (gitignored) — that business's own SQLite DB, created automatically on first run.
 
 Every `tools/*.py` script accepts `--business <slug>` to operate on a specific business regardless of `BUSINESS_SLUG`.
+
+## Hardening & operations
+
+- **`python3 tools/check_health.py [--business <slug>]`** — OAuth token validity, secrets file permissions, review queue backlog, and last-run summary in one report. Worth running periodically even without a scheduler.
+- **`python3 tools/fetch_reviews.py`** refuses to hand back more than 50 actionable reviews at once (`--allow-large-batch` to override) — a safety net against an agent unattended-processing an unexpectedly huge batch.
+- Google API calls retry transient failures (429/5xx, network errors) with backoff before giving up.
+- `python3 -m unittest discover -s tests -t .` — stdlib-only test suite (no new dependency) covering the core library code.
+
+Full detail on all of the above: [docs/OPERATIONS.md](docs/OPERATIONS.md).

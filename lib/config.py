@@ -40,16 +40,22 @@ def _parse_env(path: Path) -> dict:
 
 
 def _write_env(path: Path, key: str, value: str) -> None:
-    """Set or replace KEY=value in an env file, preserving everything else."""
+    """Set or replace KEY=value in an env file, preserving everything else.
+
+    Secrets files are locked to owner-only (600) on every write — they hold
+    real OAuth credentials and should never be group/other-readable.
+    """
     lines = path.read_text().splitlines() if path.exists() else []
     for i, line in enumerate(lines):
         match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=", line)
         if match and match.group(1) == key:
             lines[i] = f"{key}={value}"
             path.write_text("\n".join(lines) + "\n")
+            path.chmod(0o600)
             return
     lines.append(f"{key}={value}")
     path.write_text("\n".join(lines) + "\n")
+    path.chmod(0o600)
 
 
 _global_env = _parse_env(ENV_PATH)

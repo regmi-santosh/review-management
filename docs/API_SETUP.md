@@ -41,7 +41,7 @@ Google has reorganized this into tabs (Overview / **Branding** / **Audience** / 
 1. Add the Google account you'll actually sign in with (the one that manages the business listing) under **Test users**.
 2. Skip this and you'll get `Error 403: access_denied — Review Management System has not completed the Google verification process` when you try to authorize.
 
-**Known limitation to plan around**: while in Testing status, refresh tokens for sensitive scopes like `business.manage` **expire after 7 days**. Moving to "In production" requires Google's OAuth app verification (a separate review, similar in spirit to the API access approval). For now we're staying in Testing and just re-running Step 4 periodically; revisit this if the system needs to run unattended for longer stretches.
+**Known limitation to plan around**: while in Testing status, refresh tokens for sensitive scopes like `business.manage` **expire after 7 days**. Moving to "In production" requires Google's OAuth app verification (a separate review, similar in spirit to the API access approval). For now we're staying in Testing and just re-running Step 4 periodically; revisit this if the system needs to run unattended for longer stretches. Run `python3 tools/check_health.py --business <slug>` periodically — it actually attempts a token refresh and tells you exactly when this has expired (rather than finding out the next time `fetch_reviews.py` mysteriously fails), and exactly which command to re-run.
 
 ## Step 3 — Create the OAuth client
 

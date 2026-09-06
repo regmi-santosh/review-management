@@ -4,6 +4,7 @@ docs/API_SETUP.md for how to get from mock to live once Google grants
 Business Profile API access for a given business's listing.
 """
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -12,6 +13,19 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from lib import config
+
+# Retry-with-backoff for transient failures (rate limiting, Google-side
+# hiccups, network blips) - matters once this runs unattended/scheduled
+# rather than always under a human's eye. Non-transient errors (4xx other
+# than 429 - bad auth, bad request, not found) fail immediately since
+# retrying won't fix them.
+_RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+_MAX_RETRIES = 3
+_BACKOFF_BASE_SECONDS = 1.0
+
+
+def _sleep_backoff(attempt: int) -> None:
+    time.sleep(_BACKOFF_BASE_SECONDS * (2**attempt))
 
 
 @dataclass
@@ -51,18 +65,30 @@ class MockGoogleBusinessProfileClient(GoogleBusinessProfileClient):
 
 def _request(method: str, url: str, headers: Optional[dict] = None, json_body: Optional[dict] = None) -> dict:
     body = json.dumps(json_body).encode() if json_body is not None else None
-    req = urllib.request.Request(url, data=body, method=method)
-    for k, v in (headers or {}).items():
-        req.add_header(k, v)
-    if body is not None:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read()
-            return json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")
-        raise RuntimeError(f"{method} {url} failed: {exc.code} {detail}") from exc
+    attempt = 0
+    while True:
+        req = urllib.request.Request(url, data=body, method=method)
+        for k, v in (headers or {}).items():
+            req.add_header(k, v)
+        if body is not None:
+            req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read()
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")
+            if exc.code in _RETRYABLE_STATUSES and attempt < _MAX_RETRIES:
+                _sleep_backoff(attempt)
+                attempt += 1
+                continue
+            raise RuntimeError(f"{method} {url} failed: {exc.code} {detail}") from exc
+        except urllib.error.URLError as exc:
+            if attempt < _MAX_RETRIES:
+                _sleep_backoff(attempt)
+                attempt += 1
+                continue
+            raise RuntimeError(f"{method} {url} failed: {exc}") from exc
 
 
 class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
@@ -130,9 +156,25 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
                 "grant_type": "refresh_token",
             }
         ).encode()
-        req = urllib.request.Request(self.TOKEN_URL, data=data, method="POST")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read())["access_token"]
+        attempt = 0
+        while True:
+            try:
+                req = urllib.request.Request(self.TOKEN_URL, data=data, method="POST")
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    return json.loads(resp.read())["access_token"]
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode(errors="replace")
+                if exc.code in _RETRYABLE_STATUSES and attempt < _MAX_RETRIES:
+                    _sleep_backoff(attempt)
+                    attempt += 1
+                    continue
+                raise RuntimeError(f"token refresh failed: {exc.code} {detail}") from exc
+            except urllib.error.URLError as exc:
+                if attempt < _MAX_RETRIES:
+                    _sleep_backoff(attempt)
+                    attempt += 1
+                    continue
+                raise RuntimeError(f"token refresh failed: {exc}") from exc
 
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self._access_token()}"}

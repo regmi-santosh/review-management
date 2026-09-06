@@ -2,10 +2,19 @@
 """Pull reviews from Google (mock or live, per GOOGLE_CLIENT_MODE in .env)
 and insert any not already in the local DB. Reviews that already had an
 owner reply on Google are recorded as already posted and excluded from the
-"new" list below. Prints the reviews that actually need the review-handler
-agent's attention as a JSON array.
+"new" list below. Prints every review still awaiting action (status=new) -
+not just ones inserted by this particular call, so a review left over from
+an interrupted or guardrail-blocked previous run always resurfaces.
 
-Usage: python3 tools/fetch_reviews.py [--business <slug>]
+Safety guardrail: if more than --max-batch reviews need action at once
+(default 50), this refuses to hand them all to the agent and exits 2
+instead - unusual batch sizes deserve a human's attention before an agent
+processes them unattended. Pass --allow-large-batch to proceed anyway.
+Nothing is lost either way; reviews stay safely stored as status=new.
+
+Usage:
+  python3 tools/fetch_reviews.py [--business <slug>]
+  python3 tools/fetch_reviews.py --allow-large-batch
 """
 import argparse
 import json
@@ -22,6 +31,17 @@ from lib.google_client import get_google_client
 def main() -> None:
     parser = argparse.ArgumentParser()
     add_business_arg(parser)
+    parser.add_argument(
+        "--max-batch",
+        type=int,
+        default=50,
+        help="Refuse (exit 2) instead of returning more than this many actionable reviews.",
+    )
+    parser.add_argument(
+        "--allow-large-batch",
+        action="store_true",
+        help="Proceed even if more than --max-batch reviews need action.",
+    )
     args = parser.parse_args()
     apply_business_arg(args)
 
@@ -29,7 +49,6 @@ def main() -> None:
     client = get_google_client()
     fetched = client.fetch_reviews()
 
-    actionable = []
     already_replied = 0
     for raw in fetched:
         new_id = store.insert_review(
@@ -44,10 +63,33 @@ def main() -> None:
         if new_id is None:
             continue
         row = store.get_review(conn, new_id)
-        if row["status"] == "new":
-            actionable.append(row)
-        else:
+        if row["status"] != "new":
             already_replied += 1
+
+    actionable = store.list_reviews(conn, status="new")
+
+    if len(actionable) > args.max_batch and not args.allow_large_batch:
+        print(
+            json.dumps(
+                {
+                    "fetched": len(fetched),
+                    "already_replied": already_replied,
+                    "batch_too_large": True,
+                    "actionable_count": len(actionable),
+                    "max_batch": args.max_batch,
+                    "message": (
+                        f"{len(actionable)} reviews need action, exceeding --max-batch="
+                        f"{args.max_batch}. This is unusual - stop and confirm with a human this "
+                        "is expected (e.g. a large backlog on a first-ever fetch) before "
+                        "processing. Nothing is lost: all reviews are safely stored as status=new. "
+                        "Re-run with --allow-large-batch once confirmed."
+                    ),
+                    "new": [],
+                },
+                indent=2,
+            )
+        )
+        sys.exit(2)
 
     print(
         json.dumps(

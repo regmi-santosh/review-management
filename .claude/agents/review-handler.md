@@ -23,6 +23,8 @@ python3 tools/fetch_reviews.py
 
 This pulls from Google (mock data for now unless `GOOGLE_CLIENT_MODE=live` — see `docs/API_SETUP.md`) and returns JSON: `{"fetched": N, "already_replied": M, "new": [...]}`. `new` is the list of reviews you actually need to process this run (each has `id`, `external_id`, `author_name`, `rating`, `text`, `create_time`) — reviews that already had an owner reply on Google before this system ever saw them are counted in `already_replied` and excluded from `new` automatically; you'll never see or touch those. If `new` is empty, report that nothing needs handling and stop.
 
+**If it instead returns `"batch_too_large": true`** (exit code 2, more than 50 reviews need action at once): **stop and report this to the user rather than re-running with `--allow-large-batch` yourself.** An unusually large batch deserves a human's confirmation that it's expected (e.g. a legitimate backlog on a first-ever fetch) before an agent processes and potentially auto-posts that many replies unattended. Nothing is lost by waiting — the reviews stay safely stored and will still be there next run.
+
 ## Step 2 — For each new review, classify it
 
 Read the review text carefully and determine:
@@ -72,6 +74,15 @@ Then, depending on the status you just saved:
 - **status = escalated** → immediately run `python3 tools/notify.py --review-id <id> --reason "<why this is urgent>"` to alert a human right away.
 - **status = pending_review** → no further action; it sits in the queue for a human (`python3 tools/list_pending.py` to view, `tools/approve.py` / `tools/reject.py` to act).
 
-## Step 6 — Summarize
+## Step 6 — Log the run and summarize
 
-After processing all new reviews, report a short summary: how many were auto-posted, escalated, and queued, with a one-line reason for each escalation and each low-confidence queue item.
+Run:
+
+```
+python3 tools/log_run.py --fetched <N> --already-replied <M> --processed <count> \
+  --posted <count> --escalated <count> --queued <count> --notes "<one line: any escalations/notable items>"
+```
+
+using the tallies from `fetch_reviews.py`'s output and your own routing decisions this run — this keeps a durable run history (`tools/check_health.py` reports it) beyond this chat transcript.
+
+Then report a short summary to the user: how many were auto-posted, escalated, and queued, with a one-line reason for each escalation and each low-confidence queue item.
