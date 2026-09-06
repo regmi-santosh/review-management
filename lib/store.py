@@ -28,10 +28,32 @@ CREATE TABLE IF NOT EXISTS reviews (
     reasoning TEXT,
     draft_reply TEXT,
     posted_reply TEXT,
+    reply_source TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 """
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """One-time, idempotent schema migrations for DBs created before a
+    column existed. Safe to run on every connect()."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(reviews)")}
+    if "reply_source" not in columns:
+        conn.execute("ALTER TABLE reviews ADD COLUMN reply_source TEXT")
+        # Backfill from data shape: the agent always sets `reasoning` via
+        # save_review.py before posting, so a posted review with no
+        # reasoning must have gotten its reply from a pre-existing Google
+        # reply captured at fetch time (see insert_review), not from us.
+        conn.execute(
+            "UPDATE reviews SET reply_source = 'agent' "
+            "WHERE reply_source IS NULL AND reasoning IS NOT NULL"
+        )
+        conn.execute(
+            "UPDATE reviews SET reply_source = 'owner' "
+            "WHERE reply_source IS NULL AND status = 'posted' AND posted_reply IS NOT NULL"
+        )
+        conn.commit()
 
 
 def connect() -> sqlite3.Connection:
@@ -42,6 +64,7 @@ def connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute(SCHEMA)
     conn.commit()
+    _migrate(conn)
     return conn
 
 
@@ -75,11 +98,12 @@ def insert_review(
 
     ts = _now()
     status = "posted" if existing_reply else "new"
+    reply_source = "owner" if existing_reply else None
     cur = conn.execute(
         "INSERT INTO reviews "
-        "(external_id, author_name, rating, text, create_time, status, posted_reply, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (external_id, author_name, rating, text, create_time, status, existing_reply, ts, ts),
+        "(external_id, author_name, rating, text, create_time, status, posted_reply, reply_source, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (external_id, author_name, rating, text, create_time, status, existing_reply, reply_source, ts, ts),
     )
     conn.commit()
     return cur.lastrowid

@@ -26,6 +26,8 @@ tools/
   reject.py                  human helper: dismiss a queued review with no reply
   google_oauth_setup.py      one-time: obtain a Google OAuth refresh token (see docs/API_SETUP.md)
   google_list_locations.py   one-time: discover your Google account/location IDs
+  learn_voice.py             onboarding: sample a business's pre-existing owner replies into
+                              voice_sample.md, to turn into profile.md's voice section
 
 lib/                  shared code the tools above import (no ORM, no web framework)
   config.py           resolves the active business into a Business object (lib/config.py's
@@ -85,7 +87,8 @@ Each business is fully isolated — its own DB (`reviews.db`), its own Google OA
 3. Add `profile.md` — reply voice, signature, any business-specific escalation notes (see the example in `businesses/brows-and-threading-city/profile.md`).
 4. For demo/dev purposes, add a `seed_reviews.json` with a few sample reviews in the same shape as the existing one.
 5. Once you have Google API access for this business, run `python3 tools/google_oauth_setup.py --business <new-slug>` and `python3 tools/google_list_locations.py --business <new-slug>` — this writes credentials into `businesses/<new-slug>/.env`, never the shared top-level one (see docs/API_SETUP.md).
-6. Either set `BUSINESS_SLUG=<new-slug>` in the top-level `.env` to make it the default, or just pass `--business <new-slug>` to every `tools/*.py` call (and tell the agent which business you mean when invoking it) to run it alongside other businesses without changing any defaults.
+6. Once live and fetched at least once, run `python3 tools/learn_voice.py --business <new-slug>` if the listing already has owner replies on Google — it samples them into `voice_sample.md` so you can write a grounded voice section in `profile.md` instead of guessing.
+7. Either set `BUSINESS_SLUG=<new-slug>` in the top-level `.env` to make it the default, or just pass `--business <new-slug>` to every `tools/*.py` call (and tell the agent which business you mean when invoking it) to run it alongside other businesses without changing any defaults.
 
 Nothing else changes: the same agent definition, tools, and DB schema work for any business.
 
