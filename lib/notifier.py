@@ -19,6 +19,7 @@ from abc import ABC, abstractmethod
 from typing import List
 
 from lib import config
+from lib.logging_setup import get_logger
 
 
 def _post_json(url: str, payload: dict) -> None:
@@ -73,6 +74,7 @@ def get_configured_notifiers(business: config.Business) -> List[Notifier]:
 
 def notify_escalation(review: dict, reason: str) -> None:
     business = config.active()
+    logger = get_logger("notifier")
     message = (
         f"\U0001F6A8 Escalated review for {business.name}\n"
         f"Rating: {review['rating']}/5  Author: {review['author_name']}\n"
@@ -80,14 +82,17 @@ def notify_escalation(review: dict, reason: str) -> None:
         f"Review: {review['text']}\n"
         f"Draft reply (needs approval): {review.get('draft_reply') or '(none yet)'}"
     )
+    logger.info(f"escalation triggered: rating={review['rating']} author={review['author_name']!r} reason={reason!r}")
 
     sent = False
     for notifier in get_configured_notifiers(business):
         try:
-            notifier.send(message)
-            sent = True
-        except (urllib.error.URLError, urllib.error.HTTPError) as exc:
-            print(f"[notify] failed to send via {type(notifier).__name__} ({exc})")
+            urllib.request.urlopen(req, timeout=10)
+            logger.info("escalation sent via Slack")
+            return
+        except Exception as exc:
+            logger.warning(f"failed to post escalation to Slack: {exc}")
+            print(f"[notify] failed to post to Slack ({exc}); falling back to console:")
 
-    if not sent:
-        print(f"[notify] {message}")
+    logger.warning("escalation NOT sent to any channel - printed to console only")
+    print(f"[notify] {message}")

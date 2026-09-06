@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.review-management.brows-and-threading-city</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/sansha/Documents/Projects/brows &amp; threading/review-management/scripts/run_review_handler.sh</string>
+    </array>
+
+    <!-- Once daily at 7:00 AM local time. Change Hour/Minute and re-run
+         the bootstrap command in docs/OPERATIONS.md to adjust. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Don't fire immediately on install - only at the scheduled time. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/sansha/Documents/Projects/brows &amp; threading/review-management/businesses/brows-and-threading-city/logs/launchd_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/sansha/Documents/Projects/brows &amp; threading/review-management/businesses/brows-and-threading-city/logs/launchd_stderr.log</string>
+</dict>
+</plist>

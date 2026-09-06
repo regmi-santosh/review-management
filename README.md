@@ -62,11 +62,13 @@ tests/                 stdlib unittest suite, fully isolated from real businesse
 
 ### Running the agent
 
-There's no scheduler wired up yet, by design, while we're on mock data. To process the current batch of new reviews, just ask Claude Code to run it, e.g.:
+To process the current batch of new reviews on demand, just ask Claude Code to run it, e.g.:
 
 > run the review-handler agent
 
-It will read the active business's profile, run `tools/fetch_reviews.py`, classify/draft/route each new review itself, and call the appropriate tool script(s) directly. Once this is validated end-to-end, wiring it to a real schedule is a later addition (e.g. the `schedule` skill) — no changes needed to the agent or tools.
+It will read the active business's profile, run `tools/fetch_reviews.py`, classify/draft/route each new review itself, and call the appropriate tool script(s) directly.
+
+For unattended/scheduled runs, see `docs/OPERATIONS.md` "Scheduling" — this runs via local `launchd` on the machine hosting the business's credentials and data, not a cloud routine (a cloud routine clones a fresh checkout from GitHub each run and can't see the gitignored `businesses/<slug>/.env` or `reviews.db` it would need).
 
 To run it for a specific business (when more than one is configured):
 

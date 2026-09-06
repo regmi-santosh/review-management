@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from lib import config
+from lib.logging_setup import get_logger
 
 # Retry-with-backoff for transient failures (rate limiting, Google-side
 # hiccups, network blips) - matters once this runs unattended/scheduled
@@ -60,9 +61,9 @@ class MockGoogleBusinessProfileClient(GoogleBusinessProfileClient):
         raw = json.loads(config.active().seed_reviews_path.read_text())
         return [RawReview(**item) for item in raw]
 
-    def post_reply(self, external_id: str, location_id: Optional[str], reply_text: str) -> None:
-        where = f" (location {location_id})" if location_id else ""
-        print(f"[mock-google] would post reply to review {external_id}{where}:\n{reply_text}")
+    def post_reply(self, external_id: str, reply_text: str) -> None:
+        get_logger("google_client").info(f"[mock] would post reply to review {external_id}")
+        print(f"[mock-google] would post reply to review {external_id}:\n{reply_text}")
 
 
 def _request(method: str, url: str, headers: Optional[dict] = None, json_body: Optional[dict] = None) -> dict:
@@ -206,9 +207,11 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
                             location_id=location_id,
                         )
                     )
-                page_token = data.get("nextPageToken")
-                if not page_token:
-                    break
+                )
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+        get_logger("google_client").info(f"fetched {len(reviews)} reviews from Google (account={self._account_id})")
         return reviews
 
     def post_reply(self, external_id: str, location_id: Optional[str], reply_text: str) -> None:
@@ -220,6 +223,7 @@ class LiveGoogleBusinessProfileClient(GoogleBusinessProfileClient):
             )
         url = f"{self.BASE_URL}/accounts/{self._account_id}/locations/{location_id}/reviews/{external_id}/reply"
         _request("PUT", url, headers=self._headers(), json_body={"comment": reply_text})
+        get_logger("google_client").info(f"posted reply to Google for review {external_id}")
 
 
 def get_google_client() -> GoogleBusinessProfileClient:

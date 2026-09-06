@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from lib import store
 from lib.cli import add_business_arg, apply_business_arg
 from lib.google_client import get_google_client
+from lib.logging_setup import get_logger
 
 
 def main() -> None:
@@ -68,8 +69,14 @@ def main() -> None:
             already_replied += 1
 
     actionable = store.list_reviews(conn, status="new")
+    get_logger("fetch_reviews").info(
+        f"fetched={len(fetched)} already_replied={already_replied} actionable={len(actionable)}"
+    )
 
     if len(actionable) > args.max_batch and not args.allow_large_batch:
+        get_logger("fetch_reviews").warning(
+            f"batch_too_large: {len(actionable)} actionable reviews exceeds max_batch={args.max_batch}"
+        )
         print(
             json.dumps(
                 {

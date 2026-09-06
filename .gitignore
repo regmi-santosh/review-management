@@ -6,6 +6,7 @@ venv/
 *.db
 *.db-journal
 businesses/*/voice_sample*.md
+businesses/*/logs/
 .pytest_cache/
 .DS_Store
 *.egg-info/
