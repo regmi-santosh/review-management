@@ -29,6 +29,18 @@ class BusinessFactsTests(unittest.TestCase):
         with temp_business(business_facts={"google_client_mode": "live"}) as business:
             self.assertEqual(business.google_client_mode, "live")
 
+    def test_social_platforms_unset_means_none(self):
+        with temp_business(business_facts={}) as business:
+            self.assertIsNone(business.social_platforms)
+
+    def test_social_platforms_explicit_empty_list_is_preserved(self):
+        with temp_business(business_facts={"social_platforms": []}) as business:
+            self.assertEqual(business.social_platforms, [])
+
+    def test_social_platforms_explicit_list_is_preserved(self):
+        with temp_business(business_facts={"social_platforms": ["facebook"]}) as business:
+            self.assertEqual(business.social_platforms, ["facebook"])
+
 
 class LocationIdsTests(unittest.TestCase):
     def test_no_location_configured(self):

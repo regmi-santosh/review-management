@@ -18,21 +18,65 @@ lib/telegram_bot.py for the interactive (inbound) side, which correlates a
 Telegram reply back to a review and acts on it.
 """
 import json
+import mimetypes
+import uuid
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import List, Optional
 
 from lib import config
 from lib.logging_setup import get_logger
 
 
+def _urlopen(req: urllib.request.Request, timeout: int) -> bytes:
+    """urlopen, but surfaces the response body on an HTTP error instead of
+    swallowing it - APIs like Telegram's and Facebook's Graph API put the
+    actual reason (invalid token, missing permission, etc.) in a JSON body
+    even on 4xx, which a bare HTTPError discards."""
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")
+        raise RuntimeError(f"HTTP {exc.code} from {req.full_url}: {body}") from None
+
+
 def post_json(url: str, payload: dict) -> dict:
     data = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        raw = resp.read()
+    raw = _urlopen(req, timeout=10)
+    return json.loads(raw) if raw else {}
+
+
+def post_multipart(url: str, fields: dict, file_field: str, file_path: str) -> dict:
+    """POST `fields` plus one file (`file_field` -> `file_path`) as
+    multipart/form-data. stdlib has no multipart encoder built in, so this
+    builds the body by hand — only needed for Telegram's sendPhoto today."""
+    boundary = uuid.uuid4().hex
+    content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+    parts = []
+    for name, value in fields.items():
+        parts.append(
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode()
+        )
+    filename = Path(file_path).name
+    with open(file_path, "rb") as f:
+        file_bytes = f.read()
+    parts.append(
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"{file_field}\"; "
+        f"filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n".encode()
+        + file_bytes
+        + b"\r\n"
+    )
+    parts.append(f"--{boundary}--\r\n".encode())
+    data = b"".join(parts)
+
+    req = urllib.request.Request(url, data=data, method="POST")
+    req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    raw = _urlopen(req, timeout=30)
     return json.loads(raw) if raw else {}
 
 
@@ -44,6 +88,14 @@ class Notifier(ABC):
         correlate a later reply back to what it was sent about) - None if the
         channel has no such concept."""
         ...
+
+    def send_photo(self, path: str, caption: str) -> Optional[str]:
+        """Send the image at `path` with `caption`. Default falls back to a
+        plain text message noting an image was drafted - most channels
+        (e.g. Slack incoming webhooks) can't upload files at all. Override
+        this only where the channel genuinely supports it (see
+        TelegramNotifier)."""
+        return self.send(f"{caption}\n[image drafted: {path}]")
 
 
 class SlackNotifier(Notifier):
@@ -66,6 +118,14 @@ class TelegramNotifier(Notifier):
         message_id = result.get("result", {}).get("message_id")
         return str(message_id) if message_id is not None else None
 
+    def send_photo(self, path: str, caption: str) -> Optional[str]:
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendPhoto"
+        result = post_multipart(
+            url, {"chat_id": self.chat_id, "caption": caption}, "photo", path
+        )
+        message_id = result.get("result", {}).get("message_id")
+        return str(message_id) if message_id is not None else None
+
 
 # Each entry: (condition on the business's config, factory to build the Notifier).
 # Add a new channel here - nothing else in this file needs to change.
@@ -85,8 +145,11 @@ def get_configured_notifiers(business: config.Business) -> List[Notifier]:
     return [make(business) for configured, make in _CONNECTORS if configured(business)]
 
 
-def _broadcast(business: config.Business, message: str, logger, context: str) -> tuple:
-    """Send `message` through every channel this business has configured.
+def _broadcast(
+    business: config.Business, message: str, logger, context: str, image_path: Optional[str] = None
+) -> tuple:
+    """Send `message` (as a photo caption if `image_path` is set, else a
+    plain text message) through every channel this business has configured.
     Returns (sent_to_at_least_one, telegram_message_id_if_any) - the latter
     lets a caller correlate a later Telegram reply back to this message."""
     sent = False
@@ -94,7 +157,7 @@ def _broadcast(business: config.Business, message: str, logger, context: str) ->
     for channel in get_configured_notifiers(business):
         channel_name = type(channel).__name__.replace("Notifier", "")
         try:
-            result = channel.send(message)
+            result = channel.send_photo(image_path, message) if image_path else channel.send(message)
             logger.info(f"{context} sent via {channel_name}")
             sent = True
             if isinstance(channel, TelegramNotifier) and result:
@@ -133,8 +196,11 @@ def notify_daily_summary(text: str) -> None:
     _broadcast(business, text, logger, context="daily summary")
 
 
-def notify_social_draft(text: str) -> None:
+def notify_social_draft(text: str, image_path: Optional[str] = None) -> None:
+    """Broadcast one platform's drafted caption, as a photo caption when
+    `image_path` is given (see lib/social_image.py) or plain text when not
+    (e.g. image generation failed or Pillow isn't installed)."""
     business = config.active()
     logger = get_logger("notifier")
     logger.info("social draft triggered")
-    _broadcast(business, text, logger, context="social draft")
+    _broadcast(business, text, logger, context="social draft", image_path=image_path)

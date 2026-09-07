@@ -34,8 +34,12 @@ tools/
                               (see docs/OPERATIONS.md "Interactive Telegram")
   telegram_listen.py         persistent daemon: long-polls Telegram for escalation
                               approve/reject/edit replies and on-demand summary requests
-  save_social_draft.py       save + broadcast a drafted social-media caption for a 5-star review
-                              (see docs/OPERATIONS.md "Social content drafts")
+  save_social_draft.py       save + broadcast a drafted social-media caption and a generated
+                              quote-card image for a 5-star review, per enabled platform (see
+                              docs/OPERATIONS.md "Social content drafts")
+  post_social.py             human-triggered: actually publish one review's drafted post to one
+                              platform (Facebook implemented; see docs/ARCHITECTURE.md "Social
+                              platform layer" and docs/API_SETUP.md "Facebook Page posting")
   check_health.py            OAuth/secrets/queue/last-run health check (see docs/OPERATIONS.md)
 
 lib/                  shared code the tools above import (no ORM, no web framework)
@@ -52,6 +56,11 @@ lib/                  shared code the tools above import (no ORM, no web framewo
                        acts via actions.py (see docs/OPERATIONS.md "Interactive Telegram")
   summary.py           builds the tallies+highlights summary text shared by the daily push and
                        on-demand replies
+  social_platforms.py  per-platform social caption templates (Facebook/Instagram/X/TikTok) —
+                       draft-only today, the seam for real auto-posting later (see
+                       docs/ARCHITECTURE.md "Social platform layer")
+  social_image.py      renders each platform's branded quote-card PNG (Pillow — the one
+                       non-stdlib dependency in this repo, see requirements.txt)
   actions.py           shared post/reject logic used by the CLI tools
   logging_setup.py     persistent rotating log file per business (stdlib logging — see
                        docs/OPERATIONS.md "Structured logging")
@@ -59,14 +68,19 @@ lib/                  shared code the tools above import (no ORM, no web framewo
 businesses/<slug>/     one directory per business — fully isolated data (see "Adding another business")
   business.json        structured facts: name, Maps URL, Google account/location IDs, and
                        optional per-business overrides (confidence_threshold, slack_webhook_url,
-                       google_client_mode)
+                       google_client_mode, social_platforms, social_hashtags)
   .env                 (gitignored) this business's own Google OAuth credentials — never shared
                        across businesses, since each listing is normally owned by a different
                        Google account
   profile.md           free-text voice/context the agent reads directly (Step 0 of the agent)
   seed_reviews.json    mock review data used while in mock mode
   reviews.db           (gitignored) this business's own SQLite DB — created automatically,
-                       includes a `runs` table logging every review-handler run
+                       includes a `runs` table logging every review-handler run and a
+                       `social_posts` table with each review's per-platform drafted caption
+                       and generated quote-card image path
+  logo.png             optional — composited into the quote-card image if present (see
+                       lib/social_image.py); falls back to the business name as text if absent
+  social_images/       (gitignored) generated quote-card PNGs, one per review × platform
   logs/                (gitignored) this business's own rotating log files — see
                        docs/OPERATIONS.md "Structured logging" and "Scheduling"
 
@@ -77,7 +91,7 @@ scripts/                launchd job definitions: the daily review-handler run, a
 tests/                 stdlib unittest suite, fully isolated from real businesses/ data
 ```
 
-**Dependencies: none.** Everything is Python 3 standard library (`sqlite3`, `urllib`, `argparse`, `json`, `dataclasses`, `http.server`, `webbrowser`). There's no `requirements.txt`, no virtualenv to set up, no `pip install` step — just `python3 tools/<script>.py`.
+**Dependencies: almost none.** Everything is Python 3 standard library (`sqlite3`, `urllib`, `argparse`, `json`, `dataclasses`, `http.server`, `webbrowser`) except one deliberate exception: [Pillow](https://pillow.readthedocs.io/), used only by `lib/social_image.py` to rasterize the social quote-card images (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) "Social platform layer") — `pip install -r requirements.txt` once to get it. Nothing else needs a virtualenv or `pip install` step — just `python3 tools/<script>.py`.
 
 ### Running the agent
 
@@ -113,6 +127,8 @@ Each business is fully isolated — its own DB (`reviews.db`), its own Google OA
    For a business with multiple physical locations under one account, use `"google_location_ids": ["...", "..."]` instead of the singular `google_location_id` — every review gets tagged with which location it came from, and replies get posted back to the matching one.
 
    Optional per-business overrides (fall back to the top-level `.env` / defaults when omitted): `"confidence_threshold": 0.9`, `"slack_webhook_url": "..."`, `"google_client_mode": "mock"`.
+
+   Optional social-draft settings (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) "Social platform layer"): `"social_platforms": ["facebook", "instagram"]` (which of `lib/social_platforms.py`'s registered platforms to draft for — defaults to all of them) and `"social_hashtags": ["#YourBrand", "#YourCity"]` (an ordered pool each platform's template draws its own prefix from). The quote-card image each platform also generates picks up an optional `"brand_color"`/`"brand_text_color"` (hex, sensible generic defaults if omitted), `"brand_font_path"`, and a `businesses/<slug>/logo.png` file if you add one (composited into the card; falls back to the business name as text if there's no logo yet).
 3. Add `profile.md` — reply voice, signature, any business-specific escalation notes (see the example in `businesses/brows-and-threading-city/profile.md`).
 4. For demo/dev purposes, add a `seed_reviews.json` with a few sample reviews in the same shape as the existing one.
 5. Once you have Google API access for this business, run `python3 tools/google_oauth_setup.py --business <new-slug>` and `python3 tools/google_list_locations.py --business <new-slug>` — this writes credentials into `businesses/<new-slug>/.env`, never the shared top-level one (see docs/API_SETUP.md).

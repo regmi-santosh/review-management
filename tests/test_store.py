@@ -294,5 +294,56 @@ class RunLogTests(unittest.TestCase):
             self.assertEqual(run["fetched"], 2)
 
 
+class SocialPostsTests(unittest.TestCase):
+    def test_save_and_list(self):
+        with temp_business():
+            conn = store.connect()
+            rid = store.insert_review(conn, "ext-1", "Alice", 5, "great", "2026-01-01T00:00:00Z")
+            store.save_social_posts(conn, rid, {"facebook": "fb text", "instagram": "ig text"})
+            rows = store.list_social_posts(conn, rid)
+            self.assertEqual(len(rows), 2)
+            by_platform = {r["platform"]: r["text"] for r in rows}
+            self.assertEqual(by_platform, {"facebook": "fb text", "instagram": "ig text"})
+            self.assertTrue(all(r["status"] == "drafted" for r in rows))
+
+    def test_save_is_idempotent_per_platform(self):
+        with temp_business():
+            conn = store.connect()
+            rid = store.insert_review(conn, "ext-1", "Alice", 5, "great", "2026-01-01T00:00:00Z")
+            store.save_social_posts(conn, rid, {"facebook": "first draft"})
+            store.save_social_posts(conn, rid, {"facebook": "revised draft"})
+            rows = store.list_social_posts(conn, rid)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["text"], "revised draft")
+
+    def test_list_empty_when_none_saved(self):
+        with temp_business():
+            conn = store.connect()
+            rid = store.insert_review(conn, "ext-1", "Alice", 5, "great", "2026-01-01T00:00:00Z")
+            self.assertEqual(store.list_social_posts(conn, rid), [])
+
+    def test_image_path_stored_per_platform(self):
+        with temp_business():
+            conn = store.connect()
+            rid = store.insert_review(conn, "ext-1", "Alice", 5, "great", "2026-01-01T00:00:00Z")
+            store.save_social_posts(
+                conn, rid, {"facebook": "fb text", "instagram": "ig text"},
+                images={"facebook": "/tmp/fb.png"},
+            )
+            by_platform = {r["platform"]: r["image_path"] for r in store.list_social_posts(conn, rid)}
+            self.assertEqual(by_platform, {"facebook": "/tmp/fb.png", "instagram": None})
+
+    def test_redraft_without_image_preserves_previous_image_path(self):
+        with temp_business():
+            conn = store.connect()
+            rid = store.insert_review(conn, "ext-1", "Alice", 5, "great", "2026-01-01T00:00:00Z")
+            store.save_social_posts(conn, rid, {"facebook": "first draft"}, images={"facebook": "/tmp/fb.png"})
+            # Re-draft where this platform's image render failed this time (images omits it).
+            store.save_social_posts(conn, rid, {"facebook": "revised draft"})
+            row = store.list_social_posts(conn, rid)[0]
+            self.assertEqual(row["text"], "revised draft")
+            self.assertEqual(row["image_path"], "/tmp/fb.png")
+
+
 if __name__ == "__main__":
     unittest.main()

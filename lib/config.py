@@ -21,6 +21,7 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = ROOT / ".env"
@@ -146,6 +147,54 @@ class Business:
     @property
     def slack_webhook_url(self) -> str:
         return self.facts.get("slack_webhook_url") or _global_get("SLACK_WEBHOOK_URL", "")
+
+    @property
+    def social_hashtags(self) -> list:
+        """Ordered, most-important-first hashtag pool (business.json
+        "social_hashtags") that lib/social_platforms.py draws from — each
+        platform picks its own prefix length off the front of this list."""
+        return list(self.facts.get("social_hashtags", []))
+
+    @property
+    def social_platforms(self) -> Optional[list]:
+        """Optional allow-list of platform names (business.json
+        "social_platforms") to render social drafts for. None (the key
+        absent) means every platform lib/social_platforms.py has
+        registered; an explicit `[]` means none - distinguishing the two
+        matters, so this checks `is not None` rather than truthiness."""
+        platforms = self.facts.get("social_platforms")
+        return list(platforms) if platforms is not None else None
+
+    @property
+    def brand_color(self) -> str:
+        """Quote-card background color (business.json "brand_color") — see
+        lib/social_image.py. Generic default since this repo isn't written
+        for any one business."""
+        return self.facts.get("brand_color") or "#F5F1EC"
+
+    @property
+    def brand_text_color(self) -> str:
+        return self.facts.get("brand_text_color") or "#222222"
+
+    @property
+    def logo_path(self) -> Optional[str]:
+        """businesses/<slug>/logo.png if present, else None — lib/social_image.py
+        composites it into the quote card when set, falls back to the
+        business name as text when not."""
+        path = self.dir / "logo.png"
+        return str(path) if path.exists() else None
+
+    @property
+    def brand_font_path(self) -> Optional[str]:
+        return self.facts.get("brand_font_path") or None
+
+    @property
+    def facebook_page_id(self) -> str:
+        return self._secret("FACEBOOK_PAGE_ID")
+
+    @property
+    def facebook_page_access_token(self) -> str:
+        return self._secret("FACEBOOK_PAGE_ACCESS_TOKEN")
 
     @property
     def telegram_bot_token(self) -> str:

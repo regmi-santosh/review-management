@@ -133,10 +133,12 @@ Routine output goes through the rotated `businesses/<slug>/logs/app.log` (see "S
 
 For every 5-star review the review-handler agent processes, it also drafts a short, shareable social-media caption in the business's established voice (Step 5 of `.claude/agents/review-handler.md`) and calls `tools/save_social_draft.py --review-id <id> --caption "..."`, which:
 
-- Saves it on the review row (`reviews.draft_social_post`).
-- Pushes it through every configured notification channel (`lib/notifier.py::notify_social_draft`, the same Telegram/Slack broadcast escalations and daily summaries use).
+- Saves the base caption on the review row (`reviews.draft_social_post`).
+- Reformats it per platform (hashtags, length limits — see `docs/ARCHITECTURE.md` "Social platform layer") and renders a branded quote-card PNG per platform's own aspect ratio (`lib/social_image.py`), for every platform the business has enabled (`business.json`'s `social_platforms`, default: all of them — currently Facebook, Instagram, X/Twitter, TikTok).
+- Stores each platform's text + image path in the `social_posts` table (one row per review × platform).
+- Pushes each one through every configured notification channel, as a photo with a caption where the image rendered, plain text otherwise (`lib/notifier.py::notify_social_draft`/`send_photo`, the same Telegram/Slack broadcast escalations and daily summaries use).
 
-**This is draft-only** — there's no social platform integration in this repo, so nothing is ever auto-posted anywhere. A human copies the caption from Telegram (or looks it up on the review row later) and posts it themselves.
+**Draft-only by default, with one exception**: nothing auto-posts — a human reviews the drafted image/caption (from Telegram, or the `social_posts` table) and decides whether to publish it. **Facebook is the one platform with real posting wired up**: `python3 tools/post_social.py --review-id <id> --platform facebook` (see `docs/API_SETUP.md` "Facebook Page posting" for credential setup) actually publishes that review's drafted image to the business's Facebook Page — still human-triggered, never automatic. Instagram/X/TikTok have no posting integration yet; their drafts are copy-paste-it-yourself, same as Facebook's used to be.
 
 **Anonymized by default**: the agent is instructed to never include the reviewer's name or any other identifying detail in the caption, referring to them generically instead (e.g. "one of our regulars"). This is a prompt-level instruction, not something code enforces — if you ever see a caption that slips this, that's worth flagging as a prompt-following miss.
 
