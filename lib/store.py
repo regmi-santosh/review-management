@@ -54,6 +54,20 @@ CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS social_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id INTEGER NOT NULL REFERENCES reviews(id),
+    platform TEXT NOT NULL,
+    text TEXT NOT NULL,
+    image_path TEXT,
+    status TEXT NOT NULL DEFAULT 'drafted',
+    external_post_id TEXT,
+    posted_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(review_id, platform)
+);
 """
 
 
@@ -100,6 +114,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE reviews ADD COLUMN profile_photo_url TEXT")
         conn.execute("ALTER TABLE reviews ADD COLUMN is_anonymous INTEGER")
         conn.execute("ALTER TABLE reviews ADD COLUMN draft_social_post TEXT")
+        conn.commit()
+
+    social_posts_columns = {row["name"] for row in conn.execute("PRAGMA table_info(social_posts)")}
+    if "image_path" not in social_posts_columns:
+        conn.execute("ALTER TABLE social_posts ADD COLUMN image_path TEXT")
         conn.commit()
 
 
@@ -247,3 +266,48 @@ def get_review_by_telegram_message_id(conn: sqlite3.Connection, message_id: str)
         "SELECT * FROM reviews WHERE telegram_message_id = ?", (message_id,)
     ).fetchone()
     return dict(row) if row else None
+
+
+def save_social_posts(
+    conn: sqlite3.Connection, review_id: int, rendered: dict, images: Optional[dict] = None
+) -> None:
+    """Upsert one row per platform in `rendered` (platform -> text) for this
+    review, optionally attaching `images` (platform -> image_path, omitted
+    or missing entries leave image_path unset). Idempotent — re-drafting the
+    same review's social post just overwrites its per-platform row rather
+    than duplicating it. A platform missing from `images` on a re-draft
+    (e.g. image rendering failed this time) keeps whatever image_path that
+    row already had, via COALESCE, rather than wiping out a previously
+    successful render."""
+    ts = _now()
+    images = images or {}
+    for platform, text in rendered.items():
+        conn.execute(
+            "INSERT INTO social_posts (review_id, platform, text, image_path, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(review_id, platform) DO UPDATE SET "
+            "text = excluded.text, "
+            "image_path = COALESCE(excluded.image_path, social_posts.image_path), "
+            "updated_at = excluded.updated_at",
+            (review_id, platform, text, images.get(platform), ts, ts),
+        )
+    conn.commit()
+
+
+def list_social_posts(conn: sqlite3.Connection, review_id: int) -> list:
+    rows = conn.execute(
+        "SELECT * FROM social_posts WHERE review_id = ? ORDER BY platform", (review_id,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_social_post_posted(
+    conn: sqlite3.Connection, review_id: int, platform: str, external_post_id: str
+) -> None:
+    ts = _now()
+    conn.execute(
+        "UPDATE social_posts SET status = 'posted', external_post_id = ?, posted_at = ?, updated_at = ? "
+        "WHERE review_id = ? AND platform = ?",
+        (external_post_id, ts, ts, review_id, platform),
+    )
+    conn.commit()

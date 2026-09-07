@@ -129,3 +129,35 @@ Telegram is two-way, unlike Slack's webhook: once `tools/telegram_listen.py` is 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**.
 2. Pick your workspace, then under **Incoming Webhooks**, toggle it on and **Add New Webhook to Workspace**, choosing the channel to post to.
 3. Copy the webhook URL into `.env` (`SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...`) for a global default, or into a specific business's `business.json` as `"slack_webhook_url": "..."` if that business's escalations should go to a different Slack workspace/channel than the default.
+
+## Facebook Page posting (optional — for `tools/post_social.py`)
+
+Only needed if you want to actually publish drafted quote-card posts to Facebook (see `docs/ARCHITECTURE.md` "Social platform layer" — Phase 2). Without this, `save_social_draft.py`'s drafts still work fine; they just stay draft-only. This is the real sequence we followed, gotchas included — Meta's own docs describe the theory correctly but skip these specifics.
+
+**Prerequisite**: the business needs an actual Facebook **Page** (not a personal profile), and you need to be an admin on it.
+
+1. **Create a Meta app** — [developers.facebook.com](https://developers.facebook.com) → My Apps → Create App. Any name.
+
+   **Gotcha**: if app creation fails with *"Your business is prohibited from advertising, including claiming apps"*, that's a restriction on your Meta **Business Portfolio**, not the app itself — and it has nothing to do with Page posting specifically (`pages_manage_posts` needs zero advertising permissions). Check business.facebook.com → Business Settings → Account Quality for the actual reason, or create the app without linking a restricted portfolio.
+
+2. **Get a Page Access Token** via [Graph API Explorer](https://developers.facebook.com/tools/explorer):
+   - Select your app from the dropdown.
+   - **Get Token → Get User Access Token**, checking `pages_show_list`, `pages_manage_posts`, `pages_read_engagement`.
+   - Run `GET /me/accounts` — this returns every Page you administer, each with its own `id` and `access_token`.
+
+   **Gotcha #1**: the Page's real ID is the top-level `"id"` field in that response — **not** the `id` nested inside `"category_list"` (that's the Page's business-category ID, e.g. "Beauty, Cosmetic & Personal Care", and looks just as plausible as a Page ID until you try to use it: `POST /{that-id}/photos` fails with `(#100) Object with ID '...' does not exist, cannot be loaded due to missing permissions`).
+   - **Gotcha #2**: the token you want is the **`access_token` field on that Page's entry in `/me/accounts`**, not the user access token you used to make the call. Using the user token against `/{page-id}/photos` fails distinctly (`(#10) This endpoint requires the 'pages_read_engagement' permission...`) even with the right permissions checked in step 2, because it's simply the wrong token for a Page-scoped action. Verify which one you have by calling `GET /me?access_token=<token>` — a Page token resolves to the Page's own name, a user token resolves to your personal profile.
+
+3. **(Recommended) Make it long-lived** so it doesn't expire in ~1-2 hours: exchange the user token for a long-lived one (`GET /oauth/access_token?grant_type=fb_exchange_token&client_id=<app id>&client_secret=<app secret>&fb_exchange_token=<short-lived user token>`, app ID/secret from the app's Settings → Basic), then repeat `GET /me/accounts` with *that* — the resulting Page token is effectively non-expiring as long as you stay a Page admin and don't revoke the app. No App Review needed for any of this — that's only required to manage Pages you don't personally administer.
+
+4. **Save the credentials**:
+   ```bash
+   # Put directly in businesses/<slug>/.env — same pattern as TELEGRAM_BOT_TOKEN:
+   FACEBOOK_PAGE_ID=<the top-level "id" from step 2, not the category_list one>
+   FACEBOOK_PAGE_ACCESS_TOKEN=<the Page's own access_token, not the user token>
+   ```
+   `python3 tools/check_health.py --business <slug>` confirms both are set (its "Facebook posting" check) — it doesn't validate the token against the API, so a wrong-but-present value still reports OK.
+
+5. **Post a draft**: `python3 tools/post_social.py --business <slug> --review-id <id> --platform facebook` — publishes that review's already-drafted quote-card image (from `save_social_draft.py`) with its caption. This is a real, public, human-triggered action; nothing posts automatically.
+
+**Note on API stability**: this was verified against Meta's Graph API **v25.0** (current as of writing, February 2026). `lib/social_platforms.py`'s `FacebookPlatform.post()` targets that version explicitly in its URL — if it starts erroring, check [Meta's current API version list](https://developers.facebook.com/docs/graph-api/changelog) for whether v25.0 has aged out (each version is typically supported ~2 years).

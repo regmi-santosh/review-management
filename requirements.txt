@@ -1,0 +1,5 @@
+# This repo is stdlib-only everywhere else (see lib/google_client.py,
+# lib/notifier.py) - Pillow is the one deliberate exception, needed to
+# rasterize the social quote-card images (lib/social_image.py). There's no
+# reasonable way to draw text/logos into a PNG with the standard library.
+Pillow>=10.1  # ImageFont.load_default(size=...), lib/social_image.py's final font fallback, needs 10.1+

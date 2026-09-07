@@ -4,7 +4,8 @@ still actually work (catches Testing-mode's 7-day refresh token expiry
 before it silently breaks fetch/post), checks secrets-file permissions,
 confirms an escalation channel (Telegram/Slack) is actually configured,
 confirms the configured agentic harness (see docs/ARCHITECTURE.md) has a
-matching adapter, and reports the review queue and last run.
+matching adapter, reports which social platforms are enabled for social
+drafts, and reports the review queue and last run.
 
 Exit code: 0 if everything's OK, 1 if there are warnings, 2 if anything failed.
 
@@ -23,7 +24,7 @@ from pathlib import Path
 REPO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_DIR))
 
-from lib import config, notifier, store
+from lib import config, notifier, social_image, social_platforms, store
 from lib.cli import add_business_arg, apply_business_arg
 
 OK, WARN, FAIL = "OK", "WARN", "FAIL"
@@ -95,6 +96,40 @@ def check_agent_harness() -> tuple:
     return OK, f"{harness} (scripts/harnesses/{harness}.sh)"
 
 
+def check_social_platforms(business: config.Business) -> tuple:
+    configured = business.social_platforms
+    registered = social_platforms.available_platforms()
+    enabled = configured if configured is not None else registered
+    if not enabled:
+        return OK, "none enabled (business.json social_platforms is an empty list)"
+    unknown = [p for p in enabled if p not in registered]
+    if unknown:
+        return WARN, (
+            f"business.json social_platforms has unknown name(s) {unknown} - "
+            f"no adapter for them in lib/social_platforms.py, so they're skipped"
+        )
+    if not social_image.is_available():
+        return WARN, (
+            "Pillow not installed (pip install -r requirements.txt) - text captions still "
+            "draft fine, but quote-card images (lib/social_image.py) won't generate"
+        )
+    return OK, f"enabled: {', '.join(enabled)} (draft-only - see docs/ARCHITECTURE.md)"
+
+
+def check_facebook_posting(business: config.Business) -> tuple:
+    """Facebook is the one platform with real posting wired up (see
+    docs/ARCHITECTURE.md "Social platform layer" - Phase 2). This is
+    informational, not required - posting is opt-in and human-triggered
+    via tools/post_social.py, never automatic."""
+    configured = business.social_platforms
+    enabled = configured if configured is not None else social_platforms.available_platforms()
+    if "facebook" not in enabled:
+        return OK, "facebook not enabled for this business (business.json social_platforms)"
+    if business.facebook_page_id and business.facebook_page_access_token:
+        return OK, f"credentials configured for page {business.facebook_page_id} (tools/post_social.py)"
+    return WARN, "FACEBOOK_PAGE_ID/FACEBOOK_PAGE_ACCESS_TOKEN not set - tools/post_social.py --platform facebook will fail"
+
+
 def check_queue(conn) -> tuple:
     rows = store.list_reviews(conn)
     pending = [r for r in rows if r["status"] in ("pending_review", "escalated")]
@@ -138,6 +173,8 @@ def main() -> None:
         ("Google OAuth", check_oauth(business)),
         ("Escalation channel", check_escalation_channel(business)),
         ("Agent harness", check_agent_harness()),
+        ("Social platforms", check_social_platforms(business)),
+        ("Facebook posting", check_facebook_posting(business)),
         ("Review queue", check_queue(conn)),
         ("Last run", check_last_run(conn)),
     ]

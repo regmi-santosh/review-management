@@ -153,6 +153,42 @@ class NotifySocialDraftTests(unittest.TestCase):
             printed = "\n".join(str(c.args[0]) for c in mock_print.call_args_list)
             self.assertIn("caption idea", printed)
 
+    def test_image_path_sends_via_send_photo_not_send(self):
+        with temp_business() as business:
+            business.save_secret("TELEGRAM_BOT_TOKEN", "tok")
+            business.save_secret("TELEGRAM_CHAT_ID", "123")
+            with patch.object(notifier.TelegramNotifier, "send_photo") as mock_send_photo:
+                with patch.object(notifier.TelegramNotifier, "send") as mock_send:
+                    notifier.notify_social_draft("caption idea", image_path="/tmp/card.png")
+            mock_send_photo.assert_called_once_with("/tmp/card.png", "caption idea")
+            mock_send.assert_not_called()
+
+
+class SendPhotoDefaultFallbackTests(unittest.TestCase):
+    def test_slack_falls_back_to_text_send(self):
+        slack = notifier.SlackNotifier("https://hooks.slack.com/services/x")
+        with patch.object(notifier.SlackNotifier, "send") as mock_send:
+            slack.send_photo("/tmp/card.png", "caption idea")
+        mock_send.assert_called_once()
+        (sent_text,), _ = mock_send.call_args
+        self.assertIn("caption idea", sent_text)
+        self.assertIn("/tmp/card.png", sent_text)
+
+
+class TelegramSendPhotoTests(unittest.TestCase):
+    def test_posts_multipart_with_caption_and_returns_message_id(self):
+        telegram = notifier.TelegramNotifier("tok", "123")
+        with patch.object(notifier, "post_multipart", return_value={"result": {"message_id": 42}}) as mock_post:
+            message_id = telegram.send_photo("/tmp/card.png", "caption idea")
+        self.assertEqual(message_id, "42")
+        args, kwargs = mock_post.call_args
+        url, fields, file_field, file_path = args
+        self.assertIn("sendPhoto", url)
+        self.assertEqual(fields["chat_id"], "123")
+        self.assertEqual(fields["caption"], "caption idea")
+        self.assertEqual(file_field, "photo")
+        self.assertEqual(file_path, "/tmp/card.png")
+
 
 if __name__ == "__main__":
     unittest.main()
