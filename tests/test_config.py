@@ -109,6 +109,27 @@ class SecretsTests(unittest.TestCase):
             finally:
                 del os.environ["GOOGLE_OAUTH_CLIENT_ID"]
 
+    def test_meta_and_instagram_secrets_persist_and_are_readable(self):
+        with temp_business() as business:
+            business.save_secret("META_APP_ID", "app-1")
+            business.save_secret("META_APP_SECRET", "secret-1")
+            business.save_secret("META_CONFIG_ID", "config-1")
+            business.save_secret("INSTAGRAM_BUSINESS_ACCOUNT_ID", "ig-1")
+            self.assertEqual(business.meta_app_id, "app-1")
+            self.assertEqual(business.meta_app_secret, "secret-1")
+            self.assertEqual(business.meta_config_id, "config-1")
+            self.assertEqual(business.instagram_business_account_id, "ig-1")
+
+    def test_meta_app_id_falls_back_to_process_env(self):
+        import os
+
+        with temp_business() as business:
+            os.environ["META_APP_ID"] = "top-level-app-id"
+            try:
+                self.assertEqual(business.meta_app_id, "top-level-app-id")
+            finally:
+                del os.environ["META_APP_ID"]
+
 
 class MultiBusinessTests(unittest.TestCase):
     def test_use_business_switches_active_context(self):

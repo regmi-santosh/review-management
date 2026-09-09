@@ -37,9 +37,12 @@ tools/
   save_social_draft.py       save + broadcast a drafted social-media caption and a generated
                               quote-card image for a 5-star review, per enabled platform (see
                               docs/OPERATIONS.md "Social content drafts")
+  meta_oauth_setup.py        one-time-per-business: connect a Facebook Page (+ linked Instagram
+                              account, if any) via Facebook Login for Business (see
+                              docs/API_SETUP.md "Meta platforms")
   post_social.py             human-triggered: actually publish one review's drafted post to one
                               platform (Facebook implemented; see docs/ARCHITECTURE.md "Social
-                              platform layer" and docs/API_SETUP.md "Facebook Page posting")
+                              platform layer" and docs/API_SETUP.md "Meta platforms")
   check_health.py            OAuth/secrets/queue/last-run health check (see docs/OPERATIONS.md)
 
 lib/                  shared code the tools above import (no ORM, no web framework)
@@ -133,7 +136,8 @@ Each business is fully isolated — its own DB (`reviews.db`), its own Google OA
 4. For demo/dev purposes, add a `seed_reviews.json` with a few sample reviews in the same shape as the existing one.
 5. Once you have Google API access for this business, run `python3 tools/google_oauth_setup.py --business <new-slug>` and `python3 tools/google_list_locations.py --business <new-slug>` — this writes credentials into `businesses/<new-slug>/.env`, never the shared top-level one (see docs/API_SETUP.md).
 6. Once live and fetched at least once, run `python3 tools/learn_voice.py --business <new-slug>` if the listing already has owner replies on Google — it samples them into `voice_sample.md` so you can write a grounded voice section in `profile.md` instead of guessing.
-7. Either set `BUSINESS_SLUG=<new-slug>` in the top-level `.env` to make it the default, or just pass `--business <new-slug>` to every `tools/*.py` call (and tell the agent which business you mean when invoking it) to run it alongside other businesses without changing any defaults.
+7. Optional — if this business wants Facebook posting, run `python3 tools/meta_oauth_setup.py --business <new-slug>` (requires the one-time platform-level Meta app setup in `docs/API_SETUP.md` "Meta platforms" to already exist; each business just authorizes individually after that).
+8. Either set `BUSINESS_SLUG=<new-slug>` in the top-level `.env` to make it the default, or just pass `--business <new-slug>` to every `tools/*.py` call (and tell the agent which business you mean when invoking it) to run it alongside other businesses without changing any defaults.
 
 Nothing else changes: the same agent definition, tools, and DB schema work for any business.
 

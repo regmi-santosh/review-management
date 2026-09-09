@@ -197,6 +197,35 @@ class Business:
         return self._secret("FACEBOOK_PAGE_ACCESS_TOKEN")
 
     @property
+    def instagram_business_account_id(self) -> str:
+        """Captured by tools/meta_oauth_setup.py alongside the Facebook Page
+        credentials (same Facebook Login for Business authorization) - not
+        yet used by anything. Instagram posting needs public image hosting
+        first (its publish API only accepts a fetchable image_url, unlike
+        Facebook's direct upload) - see docs/ARCHITECTURE.md."""
+        return self._secret("INSTAGRAM_BUSINESS_ACCOUNT_ID")
+
+    @property
+    def meta_app_id(self) -> str:
+        """Meta app credentials - shared across every business on this
+        platform (one app + one Facebook Login for Business configuration
+        serves every tenant), so normally set once in the top-level .env
+        rather than per business. Still resolved via _secret() so a
+        business can override it if it ever needs its own app."""
+        return self._secret("META_APP_ID")
+
+    @property
+    def meta_app_secret(self) -> str:
+        return self._secret("META_APP_SECRET")
+
+    @property
+    def meta_config_id(self) -> str:
+        """Facebook Login for Business configuration id (App Dashboard ->
+        Facebook Login for Business -> Configurations) - replaces a plain
+        OAuth scope list, see docs/API_SETUP.md "Meta platforms"."""
+        return self._secret("META_CONFIG_ID")
+
+    @property
     def telegram_bot_token(self) -> str:
         return self._secret("TELEGRAM_BOT_TOKEN")
 

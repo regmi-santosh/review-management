@@ -118,16 +118,32 @@ def check_social_platforms(business: config.Business) -> tuple:
 
 def check_facebook_posting(business: config.Business) -> tuple:
     """Facebook is the one platform with real posting wired up (see
-    docs/ARCHITECTURE.md "Social platform layer" - Phase 2). This is
-    informational, not required - posting is opt-in and human-triggered
-    via tools/post_social.py, never automatic."""
+    docs/ARCHITECTURE.md "Social platform layer" - Phase 2). Round-trips
+    the token (not just presence) the same way check_oauth() does for
+    Google - a token from tools/meta_oauth_setup.py's Facebook Login for
+    Business flow "defaults to never expire", but that's a default, not a
+    guarantee (revocation, policy action, etc. can still invalidate it), so
+    this is still worth catching proactively rather than failing mid-post."""
     configured = business.social_platforms
     enabled = configured if configured is not None else social_platforms.available_platforms()
     if "facebook" not in enabled:
         return OK, "facebook not enabled for this business (business.json social_platforms)"
-    if business.facebook_page_id and business.facebook_page_access_token:
-        return OK, f"credentials configured for page {business.facebook_page_id} (tools/post_social.py)"
-    return WARN, "FACEBOOK_PAGE_ID/FACEBOOK_PAGE_ACCESS_TOKEN not set - tools/post_social.py --platform facebook will fail"
+    if not (business.facebook_page_id and business.facebook_page_access_token):
+        return WARN, "FACEBOOK_PAGE_ID/FACEBOOK_PAGE_ACCESS_TOKEN not set - tools/post_social.py --platform facebook will fail"
+
+    url = f"https://graph.facebook.com/v25.0/me?fields=id,name&access_token={business.facebook_page_access_token}"
+    try:
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            json.loads(resp.read())
+        return OK, f"credentials valid for page {business.facebook_page_id} (tools/post_social.py)"
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        return FAIL, (
+            f"Facebook token invalid/expired ({exc.code} {detail}) - re-run: "
+            f"python3 tools/meta_oauth_setup.py --business {business.slug}"
+        )
+    except urllib.error.URLError as exc:
+        return WARN, f"could not reach Facebook to verify (network issue?): {exc}"
 
 
 def check_queue(conn) -> tuple:

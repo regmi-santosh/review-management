@@ -9,6 +9,36 @@ This system is built in four layers. Three of them have no dependency on any par
 4. Data                       reviews.db, business.json, .env
 ```
 
+Visually, with the social platform sub-layer (section 3) expanded to show where it goes once a caption is drafted:
+
+```mermaid
+flowchart TD
+    RH["<b>1. Reasoning</b><br/>.claude/agents/review-handler.md"]
+
+    subgraph L2["2. Harness adapter (unattended runs only)"]
+        RRH["scripts/run_review_handler.sh"]
+        HA["scripts/harnesses/&lt;name&gt;.sh<br/>e.g. claude-code.sh"]
+        RRH --> HA
+    end
+    HA -->|"run_agent()"| RH
+
+    RH -->|"Bash calls"| Tools["<b>3. Deterministic tools/lib</b><br/>tools/*.py + lib/*.py"]
+
+    Tools --> Social["Social platform layer<br/>lib/social_platforms.py<br/>lib/social_image.py"]
+    Tools --> Data
+
+    subgraph Data["4. Data"]
+        DB[("reviews.db<br/>social_posts table")]
+        BJ["business.json"]
+        ENV[".env secrets"]
+    end
+
+    Social -->|"text + quote-card PNG"| DB
+    Social -->|"photo or text"| Notify["Notifier<br/>Telegram / Slack"]
+    Social -->|"human-triggered<br/>tools/post_social.py"| FB["Meta Graph API<br/>(Facebook — implemented)"]
+    Social -.->|"NotImplementedError<br/>(not yet built)"| Others["Instagram / X / TikTok"]
+```
+
 ## 1. Reasoning / instructions
 
 The classification rubric, voice-matching guidance, and routing policy in `.claude/agents/review-handler.md` are ordinary prose — read the review, decide category/sentiment/urgency/confidence, draft a reply, apply the routing rules, call the right tool script. Nothing in that body assumes Claude Code specifically; any sufficiently capable agentic system with shell access could execute the same instructions.
@@ -44,8 +74,10 @@ Every 5-star review gets one agent-drafted caption (`tools/save_social_draft.py`
 
 **Phase 2 (real auto-posting)**: `SocialPlatform.post(business, image_path, caption)` is the seam — each platform implements it against its real API once that platform's credentials exist, and a human explicitly triggers it via `tools/post_social.py --review-id <id> --platform <name>` (mirroring `tools/approve.py`'s human-in-the-loop shape — the agent drafts and formats, a person decides whether to actually publish to public social media). Nothing posts automatically; the review-handler agent never calls `post()` itself.
 
-- **Facebook — implemented.** `FacebookPlatform.post()` calls the Meta Graph API (`POST /{page-id}/photos`, currently targeting `v25.0`) via `lib/notifier.py`'s `post_multipart()` helper (the same stdlib multipart uploader Telegram's `sendPhoto` uses). Credentials are `FACEBOOK_PAGE_ID`/`FACEBOOK_PAGE_ACCESS_TOKEN` in `businesses/<slug>/.env`, read via `Business.facebook_page_id`/`facebook_page_access_token` (same `_secret()` pattern as the Google OAuth fields). Getting these credentials is a manual one-time step on Meta's side (a Meta developer app + a Page access token via Graph API Explorer) — there's no equivalent of `google_oauth_setup.py` for this yet since Meta's flow doesn't lend itself to a local script the way Google's does.
-- **Instagram, X/Twitter, TikTok — not yet implemented.** Same `post()` seam, still raising `NotImplementedError` until each platform's credentials and API call are wired up the same way.
+- **Facebook — implemented.** `FacebookPlatform.post()` calls the Meta Graph API (`POST /{page-id}/photos`, currently targeting `v25.0`) via `lib/notifier.py`'s `post_multipart()` helper (the same stdlib multipart uploader Telegram's `sendPhoto` uses). Credentials are `FACEBOOK_PAGE_ID`/`FACEBOOK_PAGE_ACCESS_TOKEN` in `businesses/<slug>/.env`, read via `Business.facebook_page_id`/`facebook_page_access_token` (same `_secret()` pattern as the Google OAuth fields). `tools/meta_oauth_setup.py` (mirroring `google_oauth_setup.py`) is how a business gets these: a self-serve, per-business browser authorization via **Facebook Login for Business**, chosen specifically because this platform is multi-tenant — a plain Meta System User token would require every independent business to have their own Meta Business Manager setup, which doesn't scale to onboarding. The resulting token is a business-integration system-user token that, per Meta's docs, "defaults to never expire" for server-to-server use, unlike a plain personal-user-derived token. `tools/check_health.py`'s "Facebook posting" check round-trips it against the API, same pattern as the Google OAuth check.
+- **Instagram — credential captured, posting not implemented.** `tools/meta_oauth_setup.py` also discovers and saves `INSTAGRAM_BUSINESS_ACCOUNT_ID` when a business's Facebook Page has one linked (Instagram posting authorization rides the same Facebook Login for Business flow and reuses the same Page token — no separate per-business setup needed). `InstagramPlatform.post()` still raises `NotImplementedError`: Instagram's publish API (`POST /{ig-user-id}/media`) only accepts a publicly-reachable `image_url` that Instagram's own servers fetch, unlike Facebook's direct binary upload — the quote-card PNGs this repo generates only exist as local files (`businesses/<slug>/social_images/`), so Instagram posting is blocked on solving public image hosting first, a separate piece of infrastructure work.
+- **WhatsApp — not part of this seam.** It shares the same underlying Meta Business Portfolio concept, but its onboarding (Embedded Signup, phone number/WABA registration) and shape (conversational messaging, not content publishing) don't fit `SocialPlatform` at all — closer to a future `Notifier`-style channel or a distinct customer-messaging feature, not built here.
+- **X/Twitter, TikTok — not yet implemented, and not Meta products.** Same `post()` seam, still raising `NotImplementedError` until each platform's own (unrelated) credentials and API call are wired up.
 
 `social_posts.status`/`external_post_id`/`posted_at` (set by `tools/post_social.py` via `store.mark_social_post_posted()`) already existed from Phase 1, so wiring up a platform needs no schema change.
 
