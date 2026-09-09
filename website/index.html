@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tend — Review automation for local service businesses</title>
+<meta name="description" content="Tend reads your new Google reviews, drafts a reply in your own voice, and decides whether to post it, hold it for approval, or send it to your phone. Five-star reviews become ready-to-share social posts, too.">
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --surface: #F5F6F9;
+    --text: #0E1116;
+    --text-2: #5B6270;
+    --accent: #4F46E5;
+    --line: #E7E9EF;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0B0D10;
+      --surface: #15181E;
+      --text: #EDEEF2;
+      --text-2: #9AA2B1;
+      --accent: #8280F5;
+      --line: #23262E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0B0D10;
+    --surface: #15181E;
+    --text: #EDEEF2;
+    --text-2: #9AA2B1;
+    --accent: #8280F5;
+    --line: #23262E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 {
+    font-family: "Sora", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 650;
+    text-wrap: balance;
+    color: var(--text);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  a { color: inherit; }
+  svg { display: block; }
+  img { max-width: 100%; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 32px; }
+  section { padding: 96px 0; }
+  section.tight { padding: 0 0 96px; }
+
+  .eyebrow {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.76rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 16px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 0.98rem;
+    padding: 13px 24px;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+  }
+  .btn:hover { opacity: 0.9; }
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.96rem;
+    padding: 13px 6px;
+  }
+  .btn-ghost:hover { color: var(--accent); }
+
+  /* header */
+
+  .site-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 26px 0;
+  }
+  .wordmark {
+    font-family: "Sora", sans-serif;
+    font-weight: 700;
+    font-size: 1.3rem;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    text-decoration: none;
+    color: var(--text);
+  }
+  .mark {
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mark svg { width: 14px; height: 14px; }
+  nav.site-nav { display: flex; align-items: center; gap: 30px; font-size: 0.94rem; font-weight: 600; }
+  nav.site-nav a { text-decoration: none; color: var(--text-2); }
+  nav.site-nav a:hover { color: var(--text); }
+  nav.site-nav .btn { padding: 10px 20px; font-size: 0.9rem; }
+
+  /* hero */
+
+  .hero { padding: 60px 0 40px; }
+  .hero-inner { max-width: 780px; }
+  .hero h1 {
+    font-size: clamp(2.5rem, 4.4vw, 3.8rem);
+    line-height: 1.08;
+  }
+  .hero h1 .accent { color: var(--accent); }
+  .hero .lede {
+    margin-top: 24px;
+    font-size: 1.2rem;
+    color: var(--text-2);
+    max-width: 52ch;
+  }
+  .cta-row { margin-top: 34px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  /* pipeline diagram */
+
+  .pipeline {
+    margin-top: 72px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    position: relative;
+  }
+  .pipeline::before {
+    content: "";
+    position: absolute;
+    top: 22px; left: calc(100%/8); right: calc(100%/8);
+    height: 2px;
+    background: var(--line);
+  }
+  .pnode { position: relative; padding-right: 20px; }
+  .pdot {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; z-index: 2;
+    margin-bottom: 18px;
+  }
+  .pdot svg { width: 20px; height: 20px; color: var(--text-2); }
+  .pnode.active .pdot { background: var(--accent); border-color: var(--accent); }
+  .pnode.active .pdot svg { color: #fff; }
+  .pnode .plabel { font-weight: 700; font-size: 0.95rem; }
+  .pnode .pdetail { font-size: 0.84rem; color: var(--text-2); margin-top: 4px; }
+
+  /* sections */
+
+  .section-head { max-width: 620px; margin: 0 auto 60px; text-align: center; }
+  .section-head h2 { font-size: clamp(1.6rem, 2.6vw, 2.15rem); }
+  .section-head p { color: var(--text-2); margin-top: 14px; font-size: 1.05rem; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .feature { background: var(--bg); padding: 32px 28px; }
+  .feature .icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 22px;
+  }
+  .feature .icon svg { width: 20px; height: 20px; }
+  .feature h3 { font-size: 1.1rem; margin-bottom: 10px; }
+  .feature p { color: var(--text-2); font-size: 0.95rem; }
+
+  /* transform panel (review -> reply) */
+
+  .transform {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 8px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: stretch;
+    gap: 8px;
+    background: var(--surface);
+  }
+  .tpanel { background: var(--bg); border-radius: 12px; padding: 26px 26px 22px; }
+  .tpanel-label { font-family: "JetBrains Mono", monospace; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-2); margin-bottom: 14px; }
+  .tpanel .stars { color: var(--accent); font-size: 0.9rem; margin-bottom: 10px; letter-spacing: 1px; }
+  .tpanel .body-text { font-size: 1rem; color: var(--text); }
+  .tpanel .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 18px; }
+  .pill { font-size: 0.74rem; font-weight: 600; background: var(--surface); color: var(--text-2); padding: 4px 10px; border-radius: 20px; }
+  .pill.on { background: var(--accent); color: #fff; }
+  .tarrow { display: flex; align-items: center; justify-content: center; color: var(--text-2); }
+  .tarrow svg { width: 22px; height: 22px; }
+  .outcome-line { margin-top: 18px; font-size: 0.85rem; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 6px; }
+
+  /* decides steps */
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+  .step { border: 1px solid var(--line); border-radius: 16px; padding: 28px 26px; }
+  .step-num { font-family: "Sora", sans-serif; font-weight: 700; font-size: 0.9rem; color: var(--accent); margin-bottom: 18px; }
+  .step h3 { font-size: 1.08rem; margin-bottom: 8px; }
+  .step p { color: var(--text-2); font-size: 0.93rem; }
+  .step .rule { font-family: "JetBrains Mono", monospace; font-size: 0.78rem; color: var(--text); background: var(--surface); display: inline-block; padding: 5px 10px; border-radius: 6px; margin-top: 14px; }
+
+  /* aspect ratio diagram */
+
+  .social-split { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center; }
+  .ratios { display: flex; align-items: flex-end; gap: 22px; justify-content: center; padding: 20px 0; }
+  .ratio { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .ratio-box { background: var(--accent); border-radius: 6px; opacity: 0.92; }
+  .ratio-box.fb { width: 84px; height: 44px; }
+  .ratio-box.ig { width: 70px; height: 70px; }
+  .ratio-box.tw { width: 84px; height: 47px; }
+  .ratio-box.tt { width: 40px; height: 71px; }
+  .ratio-name { font-family: "JetBrains Mono", monospace; font-size: 0.7rem; color: var(--text-2); }
+
+  /* multi-location strip */
+
+  .strip { background: var(--text); color: var(--bg); border-radius: 24px; }
+  .strip .wrap { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: center; padding: 64px 48px; }
+  .strip h2 { color: #fff; }
+  .strip p { color: rgba(255,255,255,0.65); margin-top: 14px; max-width: 46ch; }
+  .strip-stats { display: flex; gap: 40px; }
+  .strip-stats strong { display: block; font-family: "Sora", sans-serif; font-size: 2.4rem; color: var(--accent); }
+  .strip-stats span { font-size: 0.85rem; color: rgba(255,255,255,0.6); }
+
+  /* closing */
+
+  .closing { text-align: center; }
+  .closing h2 { font-size: clamp(1.9rem, 3.4vw, 2.6rem); max-width: 20ch; margin: 0 auto; }
+  .closing p { color: var(--text-2); margin: 18px auto 0; max-width: 44ch; }
+  .closing .cta-row { justify-content: center; margin-top: 30px; }
+
+  footer.site-footer { border-top: 1px solid var(--line); padding: 32px 0; }
+  .site-footer .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 0.88rem; color: var(--text-2); }
+  .site-footer .wordmark { font-size: 1.05rem; }
+
+  @media (max-width: 860px) {
+    .feature-grid { grid-template-columns: 1fr; }
+    .pipeline { grid-template-columns: repeat(2, 1fr); row-gap: 32px; }
+    .pipeline::before { display: none; }
+    .transform { grid-template-columns: 1fr; }
+    .tarrow { transform: rotate(90deg); padding: 6px 0; }
+    .steps { grid-template-columns: 1fr; }
+    .social-split, .strip .wrap { grid-template-columns: 1fr; }
+    nav.site-nav a:not(.btn) { display: none; }
+  }
+</style>
+
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;650;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<header>
+  <div class="wrap site-header-row">
+    <a class="wordmark" href="#">
+      <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 6"/></svg></span>
+      Tend
+    </a>
+    <nav class="site-nav">
+      <a href="#how">How it works</a>
+      <a href="#decides">How it decides</a>
+      <a class="btn" href="#access">Request access</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-inner">
+        <p class="eyebrow">Review automation for local service businesses</p>
+        <h1>Every review answered<br>in <span class="accent">your voice</span> — automatically.</h1>
+        <p class="lede">Tend reads your new Google reviews, drafts a reply that actually sounds like you, and decides whether to post it, hold it for approval, or send it straight to your phone. Five-star reviews become ready-to-share posts, too.</p>
+        <div class="cta-row">
+          <a class="btn" href="#access">Request early access</a>
+          <a class="btn-ghost" href="#how">See how it works →</a>
+        </div>
+      </div>
+
+      <div class="pipeline">
+        <div class="pnode">
+          <div class="pdot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21c-4-4-8-7.5-8-12a8 8 0 0 1 16 0c0 4.5-4 8-8 12Z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+          <div class="plabel">Review arrives</div>
+          <div class="pdetail">Fetched from Google automatically</div>
+        </div>
+        <div class="pnode">
+          <div class="pdot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4"/></svg></div>
+          <div class="plabel">Classified</div>
+          <div class="pdetail">Category, sentiment, urgency, confidence</div>
+        </div>
+        <div class="pnode">
+          <div class="pdot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/></svg></div>
+          <div class="plabel">Reply drafted</div>
+          <div class="pdetail">In your established voice</div>
+        </div>
+        <div class="pnode active">
+          <div class="pdot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg></div>
+          <div class="plabel">Routed</div>
+          <div class="pdetail">Posted, escalated, or queued</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">How it works</p>
+        <h2>Three things happen after every review.</h2>
+        <p>No dashboard to check, no template to fill in — Tend handles the reply, the judgment call, and the follow-up post.</p>
+      </div>
+      <div class="feature-grid">
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.3 0-2.5-.3-3.6-.8L4 20l1-4.6A8.4 8.4 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"/></svg></div>
+          <h3>Replies that sound like you</h3>
+          <p>Tend learns from replies you've already written — not a generic script. It names the technician, mentions the actual service, and never opens the same way twice in a row.</p>
+        </div>
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <h3>A human stays in the loop</h3>
+          <p>Anything with real risk — a health complaint, a legal threat, a scheduling failure — gets held and sent to your phone. Approve, edit, or reject in one tap.</p>
+        </div>
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="m3 15 5-5 4 4 4-4 5 5"/><circle cx="8" cy="9" r="1.3" fill="currentColor" stroke="none"/></svg></div>
+          <h3>Best reviews, made shareable</h3>
+          <p>Every five-star review becomes a branded quote card, sized for each platform — your logo and colors kept in, the reviewer's identity always left out.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tight">
+    <div class="wrap">
+      <div class="transform">
+        <div class="tpanel">
+          <div class="tpanel-label">Incoming review</div>
+          <div class="stars">★★★★★</div>
+          <p class="body-text">"Maria always does the most beautiful brow shape — I won't go anywhere else. Fast, friendly, and the place is spotless."</p>
+          <div class="pills">
+            <span class="pill on">compliment</span>
+            <span class="pill on">positive</span>
+            <span class="pill">confidence 0.93</span>
+          </div>
+        </div>
+        <div class="tarrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        <div class="tpanel">
+          <div class="tpanel-label">Drafted &amp; posted automatically</div>
+          <p class="body-text">"So glad you love your brows! Maria will be thrilled to hear it — see you again soon."</p>
+          <div class="outcome-line"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l4 4L19 6"/></svg> Confidence above threshold — no approval needed</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="decides">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">How it decides</p>
+        <h2>No black box. You set the bar — Tend applies it every time.</h2>
+        <p>The same three rules run at 2am or during a fully booked Saturday.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <h3>Highly negative?</h3>
+          <p>Sent to your phone with a draft reply, held for your approval before anything goes out.</p>
+          <span class="rule">→ escalate</span>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <h3>Confident it's safe?</h3>
+          <p>Confidence at or above the threshold you set — 0.85 by default — and not a negative review.</p>
+          <span class="rule">→ auto-post</span>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <h3>Everything else</h3>
+          <p>Sits in your queue until you approve, edit, or reject it — never guessed at.</p>
+          <span class="rule">→ queue</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap social-split">
+      <div>
+        <p class="eyebrow">From review to repost</p>
+        <h2>One caption, sized right for every platform.</h2>
+        <p class="lede" style="margin-top:16px;">Tend renders the same five-star review as a branded card at each platform's own aspect ratio — square for Instagram, wide for Facebook, tall for TikTok — with your logo and colors, and the reviewer's name always left out.</p>
+      </div>
+      <div class="ratios">
+        <div class="ratio"><div class="ratio-box fb"></div><span class="ratio-name">facebook</span></div>
+        <div class="ratio"><div class="ratio-box ig"></div><span class="ratio-name">instagram</span></div>
+        <div class="ratio"><div class="ratio-box tw"></div><span class="ratio-name">x/twitter</span></div>
+        <div class="ratio"><div class="ratio-box tt"></div><span class="ratio-name">tiktok</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="strip">
+        <div class="wrap">
+          <div>
+            <p class="eyebrow" style="color:var(--accent);">Built for more than one location</p>
+            <h2>One studio or twenty franchise locations. Same setup, fully separate data.</h2>
+            <p>Each location gets its own voice, its own credentials, its own review queue. Nothing crosses between them — onboarding a new one takes an afternoon, not a developer.</p>
+          </div>
+          <div class="strip-stats">
+            <div><strong>1</strong><span>codebase, any number<br>of locations</span></div>
+            <div><strong>0</strong><span>data shared<br>between locations</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="closing" id="access">
+    <div class="wrap">
+      <h2>Stop losing evenings to review replies.</h2>
+      <p>Tend is in early access for a small group of salons, spas, and studios. Tell us about your business and we'll set up your first location together.</p>
+      <div class="cta-row">
+        <a class="btn" href="mailto:hello@tend.app?subject=Early%20access%20to%20Tend&amp;body=Hi%2C%20I%20would%20like%20early%20access%20to%20Tend%20for%20my%20business.%0D%0A%0D%0ABusiness%20name%3A%20%0D%0ANumber%20of%20locations%3A%20">Request early access</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span class="wordmark"><span class="mark" style="width:20px;height:20px;"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><path d="M5 12l4 4L19 6"/></svg></span> Tend</span>
+    <span>Reviews stay yours. Replies sound like you. Nothing risky posts unattended.</span>
+  </div>
+</footer>
+
+</body>
+</html>
