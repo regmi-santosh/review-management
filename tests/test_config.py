@@ -1,6 +1,8 @@
 import stat
+import tempfile
 import unittest
 import unittest.mock
+from pathlib import Path
 
 from lib import config
 from tests.helpers import temp_business, temp_businesses_root, make_business_dir
@@ -182,6 +184,23 @@ class ResolvedConfigTests(unittest.TestCase):
         config.use_resolved_config("acme-salon", facts={"name": "Acme"}, secrets={})
         business = config.active()
         self.assertTrue(str(business.db_path).endswith("businesses/acme-salon/reviews.db"))
+
+    def test_business_dir_override_redirects_everything_relative_to_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            custom_dir = Path(tmp) / "some-other-location"
+            config.use_resolved_config(
+                "acme-salon", facts={"name": "Acme"}, secrets={}, business_dir=custom_dir
+            )
+            business = config.active()
+            self.assertEqual(business.dir, custom_dir)
+            self.assertEqual(business.db_path, custom_dir / "reviews.db")
+            self.assertEqual(business.profile_path, custom_dir / "profile.md")
+            self.assertEqual(business.env_path, custom_dir / ".env")
+
+    def test_business_dir_override_defaults_to_local_layout_when_omitted(self):
+        config.use_resolved_config("acme-salon", facts={"name": "Acme"}, secrets={}, business_dir=None)
+        business = config.active()
+        self.assertTrue(str(business.dir).endswith("businesses/acme-salon"))
 
     def test_equivalent_to_reading_the_same_data_from_files(self):
         with temp_businesses_root() as root:

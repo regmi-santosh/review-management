@@ -102,19 +102,25 @@ class Business:
         self._populate(facts, secrets)
 
     @classmethod
-    def from_resolved_config(cls, slug: str, facts: dict, secrets: dict) -> "Business":
+    def from_resolved_config(
+        cls, slug: str, facts: dict, secrets: dict, business_dir: Optional[Path] = None
+    ) -> "Business":
         """Build a Business from already-resolved facts/secrets (e.g. from
         tenant-registry's get_tenant_config tool) instead of reading
         businesses/<slug>/business.json and .env from disk - the seam that
         lets an external caller supply tenant config from anywhere, while
         every existing function that reads a Business's attributes keeps
-        working completely unmodified. `dir`/`db_path`/etc. still point at
-        this repo's local businesses/<slug>/ layout (still where this
-        business's reviews.db, logs, and social_images actually live for
-        now) - only *where the facts/secrets came from* changes."""
+        working completely unmodified.
+
+        `business_dir`, if given, overrides where this Business's *data*
+        lives (db_path, social_images/, profile.md, etc. - everything
+        computed relative to `dir`) - this is the seam a service with its
+        own independent datastore uses (see review-mcp/social-mcp) instead
+        of writing into this repo's local businesses/<slug>/ layout.
+        Defaults to that local layout when omitted, unchanged from before."""
         self = cls.__new__(cls)
         self.slug = slug
-        self.dir = BUSINESSES_DIR / slug
+        self.dir = Path(business_dir) if business_dir is not None else BUSINESSES_DIR / slug
         self.profile_path = self.dir / "profile.md"
         self.seed_reviews_path = self.dir / "seed_reviews.json"
         self.db_path = self.dir / "reviews.db"
@@ -307,13 +313,15 @@ def use_business(slug: str) -> None:
     _active = Business(slug)
 
 
-def use_resolved_config(slug: str, facts: dict, secrets: dict) -> None:
+def use_resolved_config(
+    slug: str, facts: dict, secrets: dict, business_dir: Optional[Path] = None
+) -> None:
     """Like use_business(), but from already-resolved facts/secrets (e.g.
     tenant-registry's get_tenant_config) instead of reading local
     business.json/.env files - see Business.from_resolved_config()."""
     global _active_slug, _active
     _active_slug = slug
-    _active = Business.from_resolved_config(slug, facts, secrets)
+    _active = Business.from_resolved_config(slug, facts, secrets, business_dir=business_dir)
 
 
 def active() -> Business:
