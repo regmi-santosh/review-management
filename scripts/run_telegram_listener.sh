@@ -12,7 +12,7 @@
 # docs/OPERATIONS.md "Interactive Telegram" for why.
 set -uo pipefail
 
-REPO_DIR="/Users/sansha/Documents/Projects/brows & threading/review-management"
+REPO_DIR="/Users/sansha/Documents/Projects/brows & threading/tend-platform/review-management"
 PYTHON_BIN="/usr/bin/python3"
 
 cd "$REPO_DIR" || exit 1

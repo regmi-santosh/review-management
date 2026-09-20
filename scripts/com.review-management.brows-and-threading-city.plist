@@ -7,7 +7,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/sansha/Documents/Projects/brows &amp; threading/review-management/scripts/run_review_handler.sh</string>
+        <string>/Users/sansha/Documents/Projects/brows &amp; threading/tend-platform/review-management/scripts/run_review_handler.sh</string>
     </array>
 
     <!-- Once daily at 7:00 AM local time. Change Hour/Minute and re-run
@@ -25,8 +25,8 @@
     <false/>
 
     <key>StandardOutPath</key>
-    <string>/Users/sansha/Documents/Projects/brows &amp; threading/review-management/businesses/brows-and-threading-city/logs/launchd_stdout.log</string>
+    <string>/Users/sansha/Documents/Projects/brows &amp; threading/tend-platform/review-management/businesses/brows-and-threading-city/logs/launchd_stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/sansha/Documents/Projects/brows &amp; threading/review-management/businesses/brows-and-threading-city/logs/launchd_stderr.log</string>
+    <string>/Users/sansha/Documents/Projects/brows &amp; threading/tend-platform/review-management/businesses/brows-and-threading-city/logs/launchd_stderr.log</string>
 </dict>
 </plist>

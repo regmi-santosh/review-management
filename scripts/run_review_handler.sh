@@ -14,7 +14,7 @@
 # the other half of that safety net.
 set -uo pipefail
 
-REPO_DIR="/Users/sansha/Documents/Projects/brows & threading/review-management"
+REPO_DIR="/Users/sansha/Documents/Projects/brows & threading/tend-platform/review-management"
 LOG_DIR="$REPO_DIR/businesses/brows-and-threading-city/logs"
 LOG_FILE="$LOG_DIR/launchd.log"
 
