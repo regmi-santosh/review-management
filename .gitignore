@@ -11,3 +11,5 @@ businesses/*/social_images/
 .pytest_cache/
 .DS_Store
 *.egg-info/
+leads.jsonl
+businesses/_demo_*/

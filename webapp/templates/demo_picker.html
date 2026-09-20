@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Tend — Choose your location{% endblock %}
+{% block content %}
+<h1>Which location is yours?</h1>
+<p class="muted">Your Google account manages more than one Business Profile location.</p>
+<form method="post" action="/demo/locations">
+  <input type="hidden" name="pending_id" value="{{ pending_id }}">
+  {% for loc in locations %}
+    <label class="card" style="display:block; cursor:pointer;">
+      <input type="radio" name="location_key" value="{{ loc.account_id }}:{{ loc.location_id }}" required>
+      {{ loc.title or "Untitled location" }}
+    </label>
+  {% endfor %}
+  <button class="btn" type="submit">Continue</button>
+</form>
+{% endblock %}

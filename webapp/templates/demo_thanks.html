@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Tend — Thanks{% endblock %}
+{% block content %}
+<h1>Thanks{{ ", " + name if name else "" }}!</h1>
+<p class="muted">We'll be in touch shortly to get your business fully set up.</p>
+{% endblock %}

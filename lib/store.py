@@ -68,6 +68,30 @@ CREATE TABLE IF NOT EXISTS social_posts (
     updated_at TEXT NOT NULL,
     UNIQUE(review_id, platform)
 );
+
+CREATE TABLE IF NOT EXISTS milestones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    threshold INTEGER NOT NULL,
+    reached_review_id INTEGER REFERENCES reviews(id),
+    reached_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'drafted',
+    UNIQUE(type, threshold)
+);
+
+CREATE TABLE IF NOT EXISTS milestone_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    milestone_id INTEGER NOT NULL REFERENCES milestones(id),
+    platform TEXT NOT NULL,
+    text TEXT NOT NULL,
+    image_path TEXT,
+    status TEXT NOT NULL DEFAULT 'drafted',
+    external_post_id TEXT,
+    posted_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(milestone_id, platform)
+);
 """
 
 
@@ -309,5 +333,91 @@ def mark_social_post_posted(
         "UPDATE social_posts SET status = 'posted', external_post_id = ?, posted_at = ?, updated_at = ? "
         "WHERE review_id = ? AND platform = ?",
         (external_post_id, ts, ts, review_id, platform),
+    )
+    conn.commit()
+
+
+def list_reviews_chronological(conn: sqlite3.Connection) -> list:
+    """All reviews oldest-first (create_time, then id as a tiebreaker) -
+    what tools/check_milestones.py walks to find the exact review that
+    crossed each threshold, rather than just comparing before/after totals
+    (which would misattribute a threshold crossed mid-batch)."""
+    rows = conn.execute("SELECT * FROM reviews ORDER BY create_time ASC, id ASC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_recorded_milestone_thresholds(conn: sqlite3.Connection, milestone_type: str) -> set:
+    rows = conn.execute(
+        "SELECT threshold FROM milestones WHERE type = ?", (milestone_type,)
+    ).fetchall()
+    return {row["threshold"] for row in rows}
+
+
+def record_milestone(
+    conn: sqlite3.Connection, milestone_type: str, threshold: int, reached_review_id: Optional[int]
+) -> int:
+    """Record a newly-crossed milestone. The UNIQUE(type, threshold)
+    constraint (not this function) is what actually makes re-detection
+    idempotent - callers still check get_recorded_milestone_thresholds()
+    first so they don't re-draft a caption for one already recorded."""
+    cur = conn.execute(
+        "INSERT INTO milestones (type, threshold, reached_review_id, reached_at, status) "
+        "VALUES (?, ?, ?, ?, 'drafted')",
+        (milestone_type, threshold, reached_review_id, _now()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_milestone(conn: sqlite3.Connection, milestone_id: int) -> Optional[dict]:
+    row = conn.execute("SELECT * FROM milestones WHERE id = ?", (milestone_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_milestones(conn: sqlite3.Connection, status: Optional[str] = None) -> list:
+    if status:
+        rows = conn.execute(
+            "SELECT * FROM milestones WHERE status = ? ORDER BY id DESC", (status,)
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM milestones ORDER BY id DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_milestone_posts(
+    conn: sqlite3.Connection, milestone_id: int, rendered: dict, images: Optional[dict] = None
+) -> None:
+    """Same upsert-per-platform shape as save_social_posts(), keyed to a
+    milestone instead of a review."""
+    ts = _now()
+    images = images or {}
+    for platform, text in rendered.items():
+        conn.execute(
+            "INSERT INTO milestone_posts (milestone_id, platform, text, image_path, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(milestone_id, platform) DO UPDATE SET "
+            "text = excluded.text, "
+            "image_path = COALESCE(excluded.image_path, milestone_posts.image_path), "
+            "updated_at = excluded.updated_at",
+            (milestone_id, platform, text, images.get(platform), ts, ts),
+        )
+    conn.commit()
+
+
+def list_milestone_posts(conn: sqlite3.Connection, milestone_id: int) -> list:
+    rows = conn.execute(
+        "SELECT * FROM milestone_posts WHERE milestone_id = ? ORDER BY platform", (milestone_id,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_milestone_post_posted(
+    conn: sqlite3.Connection, milestone_id: int, platform: str, external_post_id: str
+) -> None:
+    ts = _now()
+    conn.execute(
+        "UPDATE milestone_posts SET status = 'posted', external_post_id = ?, posted_at = ?, updated_at = ? "
+        "WHERE milestone_id = ? AND platform = ?",
+        (external_post_id, ts, ts, milestone_id, platform),
     )
     conn.commit()

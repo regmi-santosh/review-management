@@ -21,7 +21,25 @@ Run:
 python3 tools/fetch_reviews.py
 ```
 
-This pulls from Google (mock data for now unless `GOOGLE_CLIENT_MODE=live` — see `docs/API_SETUP.md`) and returns JSON: `{"fetched": N, "already_replied": M, "new": [...]}`. `new` is the list of reviews you actually need to process this run (each has `id`, `external_id`, `author_name`, `rating`, `text`, `create_time`) — reviews that already had an owner reply on Google before this system ever saw them are counted in `already_replied` and excluded from `new` automatically; you'll never see or touch those. **If `new` is empty**, still run `python3 tools/log_run.py --fetched <N> --already-replied <M> --processed 0 --posted 0 --escalated 0 --queued 0 --notes "nothing to do"` before stopping — this keeps `check_health.py`'s "last run" a true heartbeat (ran and found nothing) rather than only updating on runs that had something to process, which would make a perfectly healthy scheduled run look stale. Then report that nothing needs handling and stop.
+This pulls from Google (mock data for now unless `GOOGLE_CLIENT_MODE=live` — see `docs/API_SETUP.md`) and returns JSON: `{"fetched": N, "already_replied": M, "new": [...]}`. `new` is the list of reviews you actually need to process this run (each has `id`, `external_id`, `author_name`, `rating`, `text`, `create_time`) — reviews that already had an owner reply on Google before this system ever saw them are counted in `already_replied` and excluded from `new` automatically; you'll never see or touch those.
+
+Then check for milestones — run:
+
+```
+python3 tools/check_milestones.py
+```
+
+This returns `{"crossed": [...]}`, each item `{"milestone_id", "type", "threshold", "reached_review_id"}` for a review-count total, consecutive-5-star streak, or founding-date anniversary newly crossed since the last run — usually empty. **Run this every time, regardless of whether `new` above is empty or not.** Review-count and streak milestones only move when there's a new review, but a founding-date anniversary can land on a day with zero new reviews, and skipping this check on quiet days would mean genuinely missing that day. `rating_streak`/`anniversary` types only ever appear if the business opted in (`rating_streak_milestones` / `founded_date` set in its `business.json`) — most businesses will only ever see `review_count` entries here, if any.
+
+For each item in `crossed`, compose a short caption in the business's established voice (`profile.md`) celebrating that specific milestone — same anonymization rule as a compliment caption (Step 5 below): never name a specific reviewer even though `reached_review_id` points at one. Then run:
+
+```
+python3 tools/save_milestone_draft.py --milestone-id <milestone_id> --caption "<caption>"
+```
+
+Note each one in your Step 6 summary so a human knows there's a fresh draft waiting — publishing it is `tools/post_social.py --milestone-id <id> --platform <platform>`, the same explicit human step as a review's social draft.
+
+**If `new` is empty**, still run `python3 tools/log_run.py --fetched <N> --already-replied <M> --processed 0 --posted 0 --escalated 0 --queued 0 --notes "nothing to do"` before stopping — this keeps `check_health.py`'s "last run" a true heartbeat (ran and found nothing) rather than only updating on runs that had something to process, which would make a perfectly healthy scheduled run look stale. Then report that nothing needs handling (plus any milestones drafted above) and stop.
 
 **If it instead returns `"batch_too_large": true`** (exit code 2, more than 50 reviews need action at once): **stop and report this to the user rather than re-running with `--allow-large-batch` yourself.** An unusually large batch deserves a human's confirmation that it's expected (e.g. a legitimate backlog on a first-ever fetch) before an agent processes and potentially auto-posts that many replies unattended. Nothing is lost by waiting — the reviews stay safely stored and will still be there next run.
 

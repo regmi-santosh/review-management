@@ -51,6 +51,12 @@ class SocialPlatform(ABC):
         its own aspect ratio. See lib/social_image.py."""
         return social_image.render_quote_card(business, review, self.image_size)
 
+    def render_milestone_image(self, business, headline: str, subline: str) -> bytes:
+        """Render this platform's branded milestone-card PNG (see
+        tools/save_milestone_draft.py) at its own aspect ratio - the
+        milestone equivalent of render_image()."""
+        return social_image.render_milestone_card(business, headline, subline, self.image_size)
+
     def post(self, business, image_path: Optional[str], caption: str) -> str:
         """Publish `image_path` (a rendered quote-card PNG, see render_image)
         with `caption` to this platform and return an external post id.

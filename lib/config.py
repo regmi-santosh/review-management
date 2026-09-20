@@ -166,6 +166,39 @@ class Business:
         return list(platforms) if platforms is not None else None
 
     @property
+    def founded_date(self) -> Optional[str]:
+        """Optional business.json "founded_date" (YYYY-MM-DD), enabling
+        anniversary milestones in tools/check_milestones.py. Absent by
+        default - a brand-new business is onboarded without it (the date
+        often isn't known yet, or isn't worth chasing down immediately) and
+        anniversary checks stay a no-op until it's added later, at which
+        point they start firing on the very next run with no other change
+        needed. See docs/ONBOARDING.md's milestone step for when to set it."""
+        return self.facts.get("founded_date") or None
+
+    @property
+    def milestone_thresholds(self) -> list:
+        """Total review-count milestones worth a celebratory social post
+        (tools/check_milestones.py). business.json "milestone_thresholds"
+        overrides this generic default list; unlike founded_date and
+        rating_streak_milestones, this one is on by default since every
+        business already has a review count to track."""
+        thresholds = self.facts.get("milestone_thresholds")
+        if thresholds is not None:
+            return list(thresholds)
+        return [50, 100, 250, 500, 1000, 2500, 5000, 10000]
+
+    @property
+    def rating_streak_milestones(self) -> list:
+        """Consecutive 5-star review-streak lengths worth a celebratory
+        social post (tools/check_milestones.py) - e.g. [5, 10, 25, 50].
+        Absent by default (empty list): opt-in per business via
+        business.json "rating_streak_milestones", same no-op-until-set
+        posture as founded_date."""
+        streaks = self.facts.get("rating_streak_milestones")
+        return list(streaks) if streaks is not None else []
+
+    @property
     def brand_color(self) -> str:
         """Quote-card background color (business.json "brand_color") — see
         lib/social_image.py. Generic default since this repo isn't written

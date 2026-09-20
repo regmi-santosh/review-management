@@ -25,10 +25,11 @@ flowchart TD
     RH -->|"Bash calls"| Tools["<b>3. Deterministic tools/lib</b><br/>tools/*.py + lib/*.py"]
 
     Tools --> Social["Social platform layer<br/>lib/social_platforms.py<br/>lib/social_image.py"]
+    Tools --> Milestones["Milestone layer<br/>tools/check_milestones.py"]
     Tools --> Data
 
     subgraph Data["4. Data"]
-        DB[("reviews.db<br/>social_posts table")]
+        DB[("reviews.db<br/>social_posts / milestones /<br/>milestone_posts tables")]
         BJ["business.json"]
         ENV[".env secrets"]
     end
@@ -37,6 +38,13 @@ flowchart TD
     Social -->|"photo or text"| Notify["Notifier<br/>Telegram / Slack"]
     Social -->|"human-triggered<br/>tools/post_social.py"| FB["Meta Graph API<br/>(Facebook — implemented)"]
     Social -.->|"NotImplementedError<br/>(not yet built)"| Others["Instagram / X / TikTok"]
+
+    Milestones -->|"crossed thresholds"| DB
+    Milestones -->|"tools/save_milestone_draft.py<br/>reuses"| Social
+
+    Demo["<b>Demo layer</b><br/>webapp/ (Flask)"] -->|"creates businesses/_demo_&lt;id&gt;/,<br/>invokes run_agent() headlessly,<br/>deletes it after"| HA
+    Demo -->|"reads results, then deletes"| Data
+    Visitor["Website visitor"] -->|"Google OAuth<br/>(Web client)"| Demo
 ```
 
 ## 1. Reasoning / instructions
@@ -80,6 +88,34 @@ Every 5-star review gets one agent-drafted caption (`tools/save_social_draft.py`
 - **X/Twitter, TikTok — not yet implemented, and not Meta products.** Same `post()` seam, still raising `NotImplementedError` until each platform's own (unrelated) credentials and API call are wired up.
 
 `social_posts.status`/`external_post_id`/`posted_at` (set by `tools/post_social.py` via `store.mark_social_post_posted()`) already existed from Phase 1, so wiring up a platform needs no schema change.
+
+### Milestone layer — celebrating totals, streaks, and anniversaries
+
+A sibling of the social platform layer above, sharing its rendering/drafting/posting machinery but triggered by the business's aggregate history instead of one specific review. `tools/check_milestones.py` is a thin CLI wrapper (same tools/lib split as `tools/post_reply.py` around `lib/actions.py`) around `lib/milestones.py::check_milestones()`, run once per review-handler cycle (right after `tools/fetch_reviews.py`, whether or not that run found any new reviews). It detects three independent milestone types, each derived fresh from the `reviews` table every run rather than tracked as a separately mutable counter that could drift:
+
+- **`review_count`** (on by default): a running count of total reviews crossing a configured threshold (`business.json`'s `milestone_thresholds`, defaulting to `[50, 100, 250, 500, 1000, 2500, 5000, 10000]` even if unset).
+- **`rating_streak`** (opt-in, no-op until set): consecutive 5-star reviews in a row crossing a configured length (`rating_streak_milestones`). Chosen over a rolling average-rating threshold deliberately — an average can cross a line and later cross back below it as new reviews arrive, which would make "have we already posted this" genuinely ambiguous; a streak only ever grows or resets to zero, so it can never un-cross a threshold it already hit.
+- **`anniversary`** (opt-in, no-op until set): whole years elapsed since `founded_date` (`YYYY-MM-DD` in `business.json`). Computed as elapsed-days-since-founding rather than an exact date match, so a scheduled run that's late by a day or two still catches the anniversary instead of silently sailing past it.
+
+Detection walks the reviews table in chronological order (`lib/store.py`'s `list_reviews_chronological()`), updating a running count/streak review-by-review and checking configured thresholds as it goes — not a simple before/after diff of totals, which would misattribute (or miss entirely) a threshold crossed mid-batch, e.g. a single fetch that jumps the count from 497 straight to 505, or a streak that spikes and breaks within one day's batch of new reviews.
+
+Each newly-crossed milestone is recorded in the `milestones` table (`type`, `threshold`, the review that reached it if any, `UNIQUE(type, threshold)` — the actual idempotency guard, not any check-then-record logic in the script). The review-handler agent drafts a caption for each one in the business's voice (same reviewer-anonymity rule as a compliment caption) and calls `tools/save_milestone_draft.py --milestone-id <id> --caption "..."`, which renders a per-platform milestone card (`lib/social_image.py`'s `render_milestone_card()` — a big headline instead of a review quote, since no single review is "the" story) into the `milestone_posts` table, the milestone equivalent of `social_posts`. Publishing is the identical human-triggered step as a review's social draft: `tools/post_social.py --milestone-id <id> --platform <name>` (mutually exclusive with `--review-id` in the same script — one small extension, not a parallel posting path).
+
+### Demo layer — a personalized live preview, not a canned example
+
+`webapp/` is a small Flask app (this repo's second deliberate non-stdlib dependency, same reasoning as Pillow — see `requirements.txt`) that lets a website visitor try the product against their **own** real Google reviews before signing up for anything, rather than a generic mock-data walkthrough. It's deliberately a separate app from `tools/`/`lib/`'s CLI-oriented design, not a rewrite of it — every existing piece (`LiveGoogleBusinessProfileClient`, `lib/store.py`, every `tools/*.py` script, `review-handler.md` itself) runs completely unmodified underneath it.
+
+**The trick that makes reuse possible**: `webapp/demo.py` creates a throwaway `businesses/_demo_<uuid>/` directory (`business.json` + `.env`) from the visitor's freshly-authorized credentials, points the existing `--business _demo_<uuid>` machinery at it, and deletes the whole directory in a `finally` block once the run finishes. Nothing downstream needs to know it's a demo — as far as `lib/google_client.py` or `review-handler.md` can tell, it's just one more business.
+
+**OAuth is a separate client from the CLI onboarding path.** `tools/google_oauth_setup.py` uses a Desktop-app OAuth client (a script catching a `localhost` redirect, per `docs/API_SETUP.md`) — that pattern doesn't work for a browser-based flow. `webapp/google_oauth.py` uses a second, **Web-application**-type client (`GOOGLE_WEB_OAUTH_CLIENT_ID`/`_SECRET`, top-level `.env` only, see `.env.example`) with a real HTTPS redirect handled by `webapp/app.py`'s `/demo/oauth/callback` route. Both clients live in the same already-approved Google Cloud project; only the client type and redirect mechanism differ. Until Google's OAuth consent screen moves from Testing to Production status (a separate, one-time verification track — see `docs/ONBOARDING.md`/the platform's own onboarding notes), this only works for Google accounts manually added as test users, exactly like the CLI path already requires — production verification removes that restriction for both paths at once, no code change needed here when it lands.
+
+**Safety guardrails, since this runs against a stranger's live Google listing**:
+- The agent invocation (`webapp/demo._build_demo_prompt()`) explicitly forbids `tools/post_reply.py`, `tools/notify.py`, and `tools/send_daily_summary.py` regardless of routing status — a visitor who clicked "try the demo" has not agreed to anything being posted to their real listing. `tools/save_social_draft.py` is safe to run as-is; it's draft-only by its own design regardless of caller.
+- The visitor's refresh token is never logged and never persisted anywhere beyond that one ephemeral `.env`, deleted synchronously after the run plus swept on the next server startup (`demo.sweep_stale_demo_dirs()`) as a backstop against a crash mid-request.
+- `demo.run_demo()` is serialized by a module-level lock, and `app.run()` is started with `threaded=False` — `lib/config.py`'s active-business selection is a process-global (`config.use_business()`), fine for the one-process-one-business-at-a-time CLI tools this repo was built around, but unsafe for two concurrent demo requests in the same process. Acceptable at "local machine + tunnel" scale; would need real fixing before any concurrent-traffic deployment.
+- A results page always states plainly that nothing was posted, regardless of what routing decision each review got — Google's own consent screen already discloses the `business.manage` scope being granted, so this is a second, plain-language layer of the same disclosure, not a substitute for it.
+
+**Explicitly not part of this layer yet**: production hosting (local + an HTTPS tunnel like ngrok only, per `DEMO_PUBLIC_BASE_URL` in `.env.example`), a Meta/Facebook equivalent (the same ephemeral-directory pattern extends to it later with no architectural change), and any real lead-management system beyond an append-only `leads.jsonl`.
 
 ## 4. Data
 

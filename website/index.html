@@ -300,8 +300,15 @@
         <h1>Every review answered<br>in <span class="accent">your voice</span> — automatically.</h1>
         <p class="lede">Tend reads your new Google reviews, drafts a reply that actually sounds like you, and decides whether to post it, hold it for approval, or send it straight to your phone. Five-star reviews become ready-to-share posts, too.</p>
         <div class="cta-row">
-          <a class="btn" href="#access">Request early access</a>
-          <a class="btn-ghost" href="#how">See how it works →</a>
+          <!-- Points at the webapp/ Flask app's /demo/start route - same
+               origin only if this page is served by that app (or proxied
+               alongside it). During local + tunnel testing (see
+               docs/ARCHITECTURE.md "Demo layer"), open the tunnel URL's
+               /demo/start directly instead if this file is opened
+               standalone. Only works for Google accounts added as OAuth
+               test users until production verification lands. -->
+          <a class="btn" href="/demo/start">Try it on your real reviews →</a>
+          <a class="btn-ghost" href="#access">Request early access</a>
         </div>
       </div>
 

@@ -5,7 +5,8 @@ before it silently breaks fetch/post), checks secrets-file permissions,
 confirms an escalation channel (Telegram/Slack) is actually configured,
 confirms the configured agentic harness (see docs/ARCHITECTURE.md) has a
 matching adapter, reports which social platforms are enabled for social
-drafts, and reports the review queue and last run.
+drafts, reports which milestone types are configured, and reports the
+review queue and last run.
 
 Exit code: 0 if everything's OK, 1 if there are warnings, 2 if anything failed.
 
@@ -146,6 +147,26 @@ def check_facebook_posting(business: config.Business) -> tuple:
         return WARN, f"could not reach Facebook to verify (network issue?): {exc}"
 
 
+def check_milestones(business: config.Business) -> tuple:
+    """Purely informational (always OK) - just surfaces what's configured
+    so it's obvious at onboarding-verification time which milestone types
+    are live for this business, per docs/ARCHITECTURE.md "Milestone
+    layer": review-count is always on, streak/anniversary are opt-in and
+    silently do nothing until their business.json key is set."""
+    parts = [f"review-count thresholds {business.milestone_thresholds}"]
+    parts.append(
+        f"rating-streak {business.rating_streak_milestones}"
+        if business.rating_streak_milestones
+        else "rating-streak: not configured (opt-in)"
+    )
+    parts.append(
+        f"anniversary: founded {business.founded_date}"
+        if business.founded_date
+        else "anniversary: founded_date not set (opt-in)"
+    )
+    return OK, "; ".join(parts)
+
+
 def check_queue(conn) -> tuple:
     rows = store.list_reviews(conn)
     pending = [r for r in rows if r["status"] in ("pending_review", "escalated")]
@@ -191,6 +212,7 @@ def main() -> None:
         ("Agent harness", check_agent_harness()),
         ("Social platforms", check_social_platforms(business)),
         ("Facebook posting", check_facebook_posting(business)),
+        ("Milestones", check_milestones(business)),
         ("Review queue", check_queue(conn)),
         ("Last run", check_last_run(conn)),
     ]

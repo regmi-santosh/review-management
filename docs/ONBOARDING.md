@@ -44,13 +44,22 @@ Only relevant if the business wants the drafted quote-card images actually publi
 
 **Not yet available**: Instagram posting itself (credential gets captured automatically alongside Facebook's, but publishing isn't implemented yet — see [ARCHITECTURE.md "Social platform layer"](ARCHITECTURE.md) for why), X/Twitter, TikTok, WhatsApp.
 
-## 5. Voice calibration (recommended if the listing has history)
+## 5. Milestone posts (optional)
+
+Review-count milestones (every 50th, 100th, 500th review, ...) draft automatically for every business with no setup — skip straight to Step 6 if that's all you want. Two richer milestone types are opt-in and only worth asking the client about if Step 4's social posting is also in use, since drafts go through the same pipeline:
+
+- **Founding date, for anniversary posts.** Ask the client when the business opened (or this listing went up, if that's the more meaningful date to them). If they don't know offhand, **don't hold up onboarding for it** — leave `founded_date` out of `business.json` entirely for now; anniversary checks are a no-op until it's set, and adding it later (any time — it doesn't need to happen during onboarding) makes them start working on the very next run with no other change needed. Format is `"founded_date": "YYYY-MM-DD"`.
+- **Rating-streak posts** (e.g. "10 five-star reviews in a row!"). Ask if the client wants these; if so, set `"rating_streak_milestones": [5, 10, 25, 50]` (or whatever lengths feel meaningful for their volume) in `business.json`. Also opt-in, also safe to skip and add later.
+
+→ See [README.md's business.json field list](../README.md#adding-another-business) and [ARCHITECTURE.md "Milestone layer"](ARCHITECTURE.md) for the full mechanics.
+
+## 6. Voice calibration (recommended if the listing has history)
 
 If this business already has owner replies on Google from before this system existed, don't guess at their voice — sample it.
 
 → Run `python3 tools/learn_voice.py --business <slug>` (after Step 2 is live and has fetched at least once) — samples existing replies into `voice_sample.md` so `profile.md`'s voice section can be grounded in how this business actually already writes, not invented.
 
-## 6. Verify — `tools/check_health.py`
+## 7. Verify — `tools/check_health.py`
 
 ```bash
 python3 tools/check_health.py --business <slug>
@@ -66,12 +75,13 @@ This is the single gate — walk down every line before considering onboarding d
 | Agent harness | the configured `AGENT_HARNESS` has a matching adapter | Platform-level config issue, not per-business — see ARCHITECTURE.md "Harness layer" |
 | Social platforms | Pillow installed, enabled platforms list is valid | `pip install -r requirements.txt`, or fix a `social_platforms` typo in `business.json` |
 | Facebook posting | token round-trips against the Graph API (or Facebook just isn't enabled for this business, which is also OK) | Re-run Step 4's `meta_oauth_setup.py` |
+| Milestones | reports which milestone types are configured (review-count is always on; streak/anniversary show as "not configured" until Step 5 sets them, which is fine) | Informational |
 | Review queue | reports current pending/escalated count | Informational |
 | Last run | reports the most recent run's tallies | Informational (no run yet is fine for a brand-new business) |
 
 Exit code 0 = everything's OK, 1 = warnings, 2 = something failed. Don't schedule anything unattended (Step 8) until this is exit-0 or the warnings are ones you've deliberately accepted.
 
-## 7. First manual run
+## 8. First manual run
 
 Before scheduling anything, run it once by hand and watch it work:
 
@@ -79,13 +89,13 @@ Before scheduling anything, run it once by hand and watch it work:
 
 This fetches, classifies, drafts, and routes every new review, and drafts social content for any 5-star ones. Confirm the replies read right and the routing (auto-post / escalate / queue) matches expectations before trusting it unattended.
 
-## 8. Go live and schedule
+## 9. Go live and schedule
 
 → **[OPERATIONS.md "Scheduling"](OPERATIONS.md#scheduling-unattended-runs)** — installing the `launchd` job for the daily review-handler run, and (if Step 3 used Telegram) the persistent Telegram listener for interactive approve/reject/edit.
 
 This runs locally via `launchd` on the machine holding this business's credentials/data — not a cloud routine, which can't see the gitignored `.env`/`reviews.db` it would need.
 
-## 9. Ongoing operation
+## 10. Ongoing operation
 
 Nothing further to "set up" — day to day:
 

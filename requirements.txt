@@ -3,3 +3,9 @@
 # rasterize the social quote-card images (lib/social_image.py). There's no
 # reasonable way to draw text/logos into a PNG with the standard library.
 Pillow>=10.1  # ImageFont.load_default(size=...), lib/social_image.py's final font fallback, needs 10.1+
+
+# Second deliberate exception, same reasoning: webapp/ (the self-serve live
+# demo - see docs/ARCHITECTURE.md "Demo layer") needs real OAuth redirect
+# handling and session/cookie management, which is painful in raw
+# http.server. Flask is the smallest reasonable tool for that job.
+Flask>=3.0

@@ -2,7 +2,7 @@ import io
 import unittest
 import unittest.mock
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from lib import social_image
 from tests.helpers import temp_business
@@ -57,6 +57,56 @@ class RenderQuoteCardTests(unittest.TestCase):
             with unittest.mock.patch.object(social_image, "_PIL_IMPORT_ERROR", ImportError("no module")):
                 with self.assertRaisesRegex(RuntimeError, "Pillow not installed"):
                     social_image.render_quote_card(business, REVIEW, (1080, 1080))
+
+
+class StripEmojiTests(unittest.TestCase):
+    def test_removes_emoji_keeps_text(self):
+        self.assertEqual(social_image._strip_emoji("Perfect every time ❤️"), "Perfect every time")
+
+    def test_removes_multiple_emoji_and_collapses_leftover_double_space(self):
+        self.assertEqual(social_image._strip_emoji("So good 🌸💖 will be back"), "So good will be back")
+
+    def test_no_emoji_unchanged(self):
+        self.assertEqual(social_image._strip_emoji("Great service, will return!"), "Great service, will return!")
+
+    def test_emoji_only_becomes_empty(self):
+        self.assertEqual(social_image._strip_emoji("🌸💖"), "")
+
+    def test_none_like_empty_stays_empty(self):
+        self.assertEqual(social_image._strip_emoji(""), "")
+
+
+class EmptyReviewTextRenderingTests(unittest.TestCase):
+    def test_no_text_review_does_not_render_empty_quote_marks(self):
+        """A bare star rating with no comment used to render as a lone
+        pair of quote marks with nothing between them - looked like a
+        rendering glitch. render_quote_card should just omit the quote
+        block entirely instead."""
+        with temp_business() as business:
+            no_text_review = {**REVIEW, "text": ""}
+            png_bytes = social_image.render_quote_card(business, no_text_review, (1080, 1080))
+            self.assertGreater(len(png_bytes), 0)  # doesn't crash, still a valid image
+
+    def test_emoji_only_review_text_treated_as_empty(self):
+        with temp_business() as business:
+            emoji_only_review = {**REVIEW, "text": "🌸💖"}
+            png_bytes = social_image.render_quote_card(business, emoji_only_review, (1080, 1080))
+            self.assertGreater(len(png_bytes), 0)
+
+    def test_quote_lines_empty_for_empty_text(self):
+        with temp_business() as business:
+            image = Image.new("RGB", (1080, 1080))
+            draw = ImageDraw.Draw(image)
+            font = social_image._load_font(business, 24)
+            self.assertEqual(social_image._quote_lines(draw, "", font, 900, 5), [])
+
+    def test_quote_lines_wraps_real_text(self):
+        with temp_business() as business:
+            image = Image.new("RGB", (1080, 1080))
+            draw = ImageDraw.Draw(image)
+            font = social_image._load_font(business, 24)
+            lines = social_image._quote_lines(draw, "Loved it", font, 900, 5)
+            self.assertEqual(lines, ["“Loved it”"])
 
 
 if __name__ == "__main__":

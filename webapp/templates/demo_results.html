@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Tend — Your reviews, answered{% endblock %}
+{% block content %}
+<h1>{{ business_name }}'s reviews, answered</h1>
+<p class="muted">This is a live preview using your real Google reviews. <strong>Nothing was posted anywhere</strong> — these are drafts only, so you can see exactly what Tend would do before anything goes live.</p>
+
+{% for r in reviews %}
+<div class="card">
+  <div><strong>{{ r.author_name }}</strong> — {{ r.rating }}★<span class="badge">{{ r.status_label }}</span></div>
+  <p>&ldquo;{{ r.text }}&rdquo;</p>
+  <p><em>Drafted reply:</em> {{ r.draft_reply }}</p>
+  {% if r.social_image %}
+    <p class="muted">5-star reviews also get a ready-to-share social post drafted:</p>
+    <img class="quote-card" src="{{ r.social_image }}" alt="Social quote card">
+    <p class="muted">{{ r.social_caption }}</p>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="card">
+  <h2>Want this running for real?</h2>
+  <p class="muted">Leave your email and we'll help you get set up.</p>
+  <form method="post" action="/demo/lead">
+    <input type="text" name="name" placeholder="Your name">
+    <input type="email" name="email" placeholder="you@business.com" required>
+    <button class="btn" type="submit">Get in touch</button>
+  </form>
+</div>
+{% endblock %}
