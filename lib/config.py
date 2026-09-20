@@ -97,12 +97,36 @@ class Business:
         self.env_path = self.dir / ".env"
 
         business_json_path = self.dir / "business.json"
-        self.facts = (
-            json.loads(business_json_path.read_text()) if business_json_path.exists() else {}
-        )
-        self._secrets = _parse_env(self.env_path)
+        facts = json.loads(business_json_path.read_text()) if business_json_path.exists() else {}
+        secrets = _parse_env(self.env_path)
+        self._populate(facts, secrets)
 
-        self.name = self.facts.get("name", slug)
+    @classmethod
+    def from_resolved_config(cls, slug: str, facts: dict, secrets: dict) -> "Business":
+        """Build a Business from already-resolved facts/secrets (e.g. from
+        tenant-registry's get_tenant_config tool) instead of reading
+        businesses/<slug>/business.json and .env from disk - the seam that
+        lets an external caller supply tenant config from anywhere, while
+        every existing function that reads a Business's attributes keeps
+        working completely unmodified. `dir`/`db_path`/etc. still point at
+        this repo's local businesses/<slug>/ layout (still where this
+        business's reviews.db, logs, and social_images actually live for
+        now) - only *where the facts/secrets came from* changes."""
+        self = cls.__new__(cls)
+        self.slug = slug
+        self.dir = BUSINESSES_DIR / slug
+        self.profile_path = self.dir / "profile.md"
+        self.seed_reviews_path = self.dir / "seed_reviews.json"
+        self.db_path = self.dir / "reviews.db"
+        self.env_path = self.dir / ".env"
+        self._populate(facts, secrets)
+        return self
+
+    def _populate(self, facts: dict, secrets: dict) -> None:
+        self.facts = facts
+        self._secrets = secrets
+
+        self.name = self.facts.get("name", self.slug)
         self.maps_url = self.facts.get("maps_url", "")
         self.google_account_id = self.facts.get("google_account_id", "")
         # Single-location businesses use google_location_id (a string); a
@@ -281,6 +305,15 @@ def use_business(slug: str) -> None:
     global _active_slug, _active
     _active_slug = slug
     _active = Business(slug)
+
+
+def use_resolved_config(slug: str, facts: dict, secrets: dict) -> None:
+    """Like use_business(), but from already-resolved facts/secrets (e.g.
+    tenant-registry's get_tenant_config) instead of reading local
+    business.json/.env files - see Business.from_resolved_config()."""
+    global _active_slug, _active
+    _active_slug = slug
+    _active = Business.from_resolved_config(slug, facts, secrets)
 
 
 def active() -> Business:

@@ -153,5 +153,51 @@ class MultiBusinessTests(unittest.TestCase):
             self.assertEqual(config.active().google_oauth_client_id, "")
 
 
+class ResolvedConfigTests(unittest.TestCase):
+    """use_resolved_config()/Business.from_resolved_config() - the seam an
+    external caller (e.g. tenant-registry) uses to supply facts/secrets
+    directly instead of this process reading local business.json/.env
+    files itself."""
+
+    def test_populates_facts_and_secrets(self):
+        config.use_resolved_config(
+            "acme-salon",
+            facts={"name": "Acme Salon", "maps_url": "https://maps.example/acme"},
+            secrets={"GOOGLE_OAUTH_CLIENT_ID": "resolved-client-id"},
+        )
+        business = config.active()
+        self.assertEqual(business.slug, "acme-salon")
+        self.assertEqual(business.name, "Acme Salon")
+        self.assertEqual(business.maps_url, "https://maps.example/acme")
+        self.assertEqual(business.google_oauth_client_id, "resolved-client-id")
+
+    def test_defaults_name_to_slug_when_facts_omit_it(self):
+        config.use_resolved_config("acme-salon", facts={}, secrets={})
+        self.assertEqual(config.active().name, "acme-salon")
+
+    def test_dir_still_points_at_local_businesses_layout(self):
+        # db_path/logs/social_images still live under this repo's local
+        # businesses/<slug>/ tree for now, even though facts/secrets came
+        # from elsewhere - see from_resolved_config()'s docstring.
+        config.use_resolved_config("acme-salon", facts={"name": "Acme"}, secrets={})
+        business = config.active()
+        self.assertTrue(str(business.db_path).endswith("businesses/acme-salon/reviews.db"))
+
+    def test_equivalent_to_reading_the_same_data_from_files(self):
+        with temp_businesses_root() as root:
+            facts = {"name": "File Business", "maps_url": "https://maps.example/file"}
+            make_business_dir(root, "file-biz", facts)
+            config.use_business("file-biz")
+            config.active().save_secret("GOOGLE_OAUTH_CLIENT_ID", "file-secret")
+            from_file = config.active()
+
+            config.use_resolved_config("file-biz", facts=facts, secrets={"GOOGLE_OAUTH_CLIENT_ID": "file-secret"})
+            from_resolved = config.active()
+
+            self.assertEqual(from_file.name, from_resolved.name)
+            self.assertEqual(from_file.maps_url, from_resolved.maps_url)
+            self.assertEqual(from_file.google_oauth_client_id, from_resolved.google_oauth_client_id)
+
+
 if __name__ == "__main__":
     unittest.main()
